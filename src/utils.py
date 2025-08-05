@@ -1,0 +1,310 @@
+from typing import List, Dict, Any
+import json
+import pandas as pd
+import uuid
+import datetime
+from pathlib import Path
+from langchain_ollama import OllamaEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+
+# --- Konstanten bleiben unverändert ---
+PROJECT_DIR = Path(__file__).parent.parent
+DOCX_DIR = PROJECT_DIR / "data" / "docx"
+CONVERTED_DIR = PROJECT_DIR / "data" / "converted"
+CHUNKS_DIR = PROJECT_DIR / "data" / "chunks"
+RESULTS_DIR = PROJECT_DIR / "data" / "results"
+CHROMA_DIR = PROJECT_DIR / "data" / "chroma"
+
+PROMPT_TEMPLATE = """
+Du bist ein präziser und hilfreicher Assistent in einem RAG-System.
+Antworte auf die Frage des Benutzers ausschließlich auf Basis des folgendes Kontexts.
+Jeder Kontextabschnitt beinhaltet auch Metadaten, auf die du dich beziehen sollst.
+Die Schlüsselwörter (MUSS, DARF NUR, VERPFLICHTEND), (SOLL, EMPFOHLEN), (KANN, OPTIONAL)
+MÜSSEN von dir in den Antworten ebenfalls groß geschrieben werden, und MÜSEEN mit *fett* gemacht werden.
+
+Deine Aufgaben:
+1.  Formuliere eine präzise Antwort auf die Frage.
+2.  Wenn die benötigten Fakten für deine Antwort im Kontext nicht enthalten ist, sage klar und deutlich,
+    dass du keine Antwort finden konntest. Erfinde nichts. Bleibe immer bei dem Kontext.
+3.  Erwähne stets, dass sich deine Informationen nur auf den gefundenen Kontext,
+    bzw. die Quellen beziehen und weitere Informationen fehlen könnten.
+4.  Zitiere am Ende deiner Antwort für JEDE verwendete Information
+    IMMER die genaue Quelle und die Seitenzahl im Format [Dokument-Quelle, Seite X].
+    Du kannst mehrere Quellen zitieren.
+
+Kontext:
+{context}
+
+Frage:
+{query}
+
+Antwort:
+"""
+
+TRUE_QUERIES = [
+    "Was sind Ziele der Informationssicherheit?",
+    "Was ist Business Continuity?",
+    "Wer hat die Leitlinie unterschrieben?",
+    "Was sind mobile Datenträger?",
+    "Kann ich die Tür in mein Büro in der Pause offen lassen?",
+    "Wie muss mein Smartphone entsperrt werden?",
+    "Welche Anforderungen sind explizit an Passwörter gestellt?",
+    "Wie sind Passwörter aufzubewahren?",
+    "Was zählt als Sicherheitsvorfall?",
+    "Wie sind vertrauliche Papierdokumente zu vernichten?",
+    "Welche Sicherheitszonen gibt es?",
+    "Nach welchen Normen muss vernichtet werden und was sagen diese aus?",
+]
+FALSE_QUERIES = [
+    "Bis wann mus ich meine Steuererklärung abgeben?",
+    "Wie laut brummt eine Hummel?",
+    "Wenn Peter doppelt so viel wiegt wie Anna und Anna wiegt 40kg wie schwer sind beide zusammen?",
+    "Liebst du mich?",
+    "Was ist der Sinn des Lebens?",
+    "Welche Vorgaben gibt es für Bürostühle?",
+    "Im Falle eines Feuers wie ist mit Sicherheitstüren umzugehen?",
+    "Wenn ich mein Smartphone mit sensiblen Daten und Firmengeheimnissen drauf verliere was muss ich tun?",
+    "Wie lauten die Namen der Vorstandsmitglieder?",
+    "Was ist der firmenweite kryptographische Mindeststandard?",
+]
+GROUND_TRUTHS = {
+    "Was sind Ziele der Informationssicherheit?": "Das Ziel der Informationssicherheit bei KISTERS",
+    "Was ist Business Continuity?": "Im Falle eines Notfalls oder einer Krise",
+    "Wer hat die Leitlinie unterschrieben?": "Klaus Kisters, Vorstand",
+    "Was sind mobile Datenträger?": "[INFO] Mobile Datenträger sind u.a.",
+    "Kann ich die Tür in mein Büro in der Pause offen lassen?": "Räume mit hohem Schutzbedarf MÜSSEN",
+    "Wie muss mein Smartphone entsperrt werden?": "Für Smartphones gelten zusätzlich folgende Maßnahmen",
+    "Welche Anforderungen sind explizit an Passwörter gestellt?": "[INFO] Passwörter sollen „schwer zu knacken, aber leicht zu behalten“ sein",
+    "Wie sind Passwörter aufzubewahren?": "Für den Umgang mit Passwörtern sind die folgenden besonderen Regeln",
+    "Was zählt als Sicherheitsvorfall?": "Wenn ein Mitarbeiter die Kompromittierung eines Passwortes",
+    "Wie sind vertrauliche Papierdokumente zu vernichten?": "Papierdokumente MÜSSEN mit Akten",
+    "Welche Sicherheitszonen gibt es?": "Für die Zutrittsregelung von Betriebsstätten",
+    "Nach welchen Normen muss vernichtet werden und was sagen diese aus?": "Die Vernichtung von Datenträgern MUSS auf Basis der Klassifikation"
+}
+
+EMBEDDING_MODELS = [
+    "all-MiniLM-L6-v2",
+    "bge-large:335m",
+    "bge-m3:567m",
+    "granite-embedding:30m",
+    "granite-embedding:278m",
+    "mxbai-embed-large:335m",
+    "nomic-embed-text:v1.5",
+    "snowflake-arctic-embed2:568m",
+]
+GENERATION_MODELS = [
+    "gemma3n:e2b",
+    "phi3:3.8b",
+    "gemma3n:e4b",
+    "qwen:4b",
+    "granite3.3:8b",
+    "llama3.1:8b",
+    "qwen3:8b",
+    "gemma3:12b",
+    "mistral-nemo:12b",
+]
+
+
+def is_relevant_chunk(chunk_text, ground_truth):
+    return ground_truth.lower() in chunk_text.lower()
+
+
+def get_models_from_user(available_models: List[str], test_mode: bool = False) -> List[str]:
+    print("\nAvailable models:")
+
+    for i, model in enumerate(available_models):
+        print(f"  [{i + 1}] {model}")
+
+    if test_mode:
+        prompt = "1. Choose model(s) by number (e.g. 1,3): "
+    else:
+        prompt = "1. Choose ONE model by number (e.g. 1): "
+
+    while True:
+        print(f"\n{prompt}")
+        user_input = input("> ").strip()
+        if not user_input:
+            print("No input received. Please select at least one model.")
+            continue
+
+        parts = [p.strip() for p in user_input.split(',')]
+        if not test_mode and len(parts) > 1:
+            print("Only one model can be selected. Please enter a single number.")
+            continue
+
+        selected_models = []
+        valid = True
+        for part in parts:
+            try:
+                choice_idx = int(part) - 1
+                if 0 <= choice_idx < len(available_models):
+                    selected_models.append(available_models[choice_idx])
+                else:
+                    print(f"Number '{part}' is invalid. Please try numbers between 1 and {len(available_models)}.")
+                    valid = False
+                    break
+            except ValueError:
+                print(f"Invalid input '{part}'. Please only use numbers.")
+                valid = False
+                break
+
+        if valid and selected_models:
+            result = sorted(list(set(selected_models)), key=selected_models.index)
+            return [result[0]] if not test_mode else result
+        elif valid and not selected_models:
+            print("No valid models selected. Please try again.")
+
+
+def get_k_values_from_user(test_mode: bool = False) -> List[int]:
+    if test_mode:
+        prompt = "2. Which k-values should be tested? (e.g. 2,4,6)"
+    else:
+        prompt = "2. Which k-value should be used? (e.g. 3)"
+    print(f"\n{prompt}")
+
+    while True:
+        user_input = input("> ").strip()
+        if not user_input:
+            print("No input received. Please select at least one k-value.")
+            continue
+
+        parts = [p.strip() for p in user_input.split(',')]
+        selected_ks = []
+        valid = True
+        for part in parts:
+            if part.isdigit() and int(part) > 0:
+                selected_ks.append(int(part))
+            else:
+                print(f"Invalid input '{part}'. Please only input positive, natural numbers.")
+                valid = False
+                break
+
+        if valid and selected_ks:
+            if not test_mode and selected_ks:
+                return [selected_ks[0]]
+            return sorted(list(set(selected_ks)))
+        elif valid and not selected_ks:
+            print("No valid k-values selected. Please try again.")
+
+
+def get_query_count_from_user(query_list: List[str], query_type_name: str) -> List[str]:
+    max_count = len(query_list)
+    if query_type_name == 'true':
+        prompt = f"3.1 How many '{query_type_name}' queries should be tested? (max: {max_count})"
+    else:
+        prompt = f"3.2 How many '{query_type_name}' queries should be tested? (max: {max_count})"
+    print(f"\n{prompt}")
+    while True:
+        try:
+            count = int(input("> "))
+            if 0 <= count <= max_count:
+                return query_list[:count]
+            else:
+                print(f"Invalid input. Please only input natural numbers between 0 and {max_count}.")
+        except ValueError:
+            print("Invalid input. Please input a natural number.")
+
+
+def load_chunks() -> List[Dict[str, Any]]:
+    chunk_files = [f for f in CHUNKS_DIR.glob("*.json")]
+    chunks = []
+    for cf in chunk_files:
+        with open(cf, "r", encoding="utf-8") as f:
+            chunks.extend(json.load(f))
+    return chunks
+
+
+def get_embedding_object(model_name: str):
+    if model_name == "all-MiniLM-L6-v2":
+        return HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'}
+        )
+    return OllamaEmbeddings(model=model_name)
+
+
+def run_benchmark(models: List[str], k_values: List[int], queries: List[str], ground_truths: Dict[str, str]):
+    chunks = load_chunks()
+    from langchain_core.documents import Document
+    docs = [Document(page_content=c["page_content"], metadata=c.get("metadata", {})) for c in chunks]
+    RESULTS_DIR.mkdir(exist_ok=True, parents=True)
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
+    results = []
+
+    import time
+    total_tasks = len(models) * len(k_values) * len(queries)
+    task_count = 0
+    finished_models = []
+    overall_start = time.time()
+
+    print("Running benchmark...")
+    for model in models:
+        model_start = time.time()
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Starting: {model}")
+        emb = get_embedding_object(model)
+        col_name = f"benchmark_collection_{uuid.uuid4().hex}"
+        db = Chroma.from_documents(documents=docs, embedding=emb, persist_directory=None, collection_name=col_name)  # benchmark-db ist nicht persistent
+        for k in k_values:
+            for query in queries:
+                res = db.similarity_search_with_score(query, k=k)
+                ground_truth = ground_truths.get(query)
+                hit_found, hit_rank, score, doc_title, content = False, -1, None, None, None
+
+                for idx, (doc, score_val) in enumerate(res, 1):
+                    if ground_truth and is_relevant_chunk(doc.page_content, ground_truth):
+                        hit_found = True
+                        hit_rank = idx
+                        doc_title = doc.metadata.get('source_file', 'N/A')
+                        content = doc.page_content
+                        score = score_val
+                        break
+
+                if not hit_found:
+                    content = "Ground truth could not be retrieved from chunks"
+                    if res:
+                        doc, score_val = res[0]
+                        doc_title = doc.metadata.get('source_file', 'N/A')
+                        score = score_val
+                    else:
+                        doc_title = "N/A"
+                        score = None
+
+                results.append({
+                    'embedding_model': model, 'k': k, 'query': query,
+                    'query_type': 'true' if query in TRUE_QUERIES else 'false',
+                    'score': score, 'hit_at_k': hit_found, 'hit_rank': hit_rank,
+                    'titel': doc_title, 'content': content,
+                })
+                task_count += 1
+                print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {task_count}/{total_tasks} {model} k={k} query='{query}' complete")
+
+        model_time = time.time() - model_start
+        finished_models.append((model, model_time))
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Finished: {model} in {model_time:.2f} seconds")
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Models completed so far: {[m[0] for m in finished_models]}")
+
+    overall_time = time.time() - overall_start
+    df = pd.DataFrame(results)
+    if len(models) != len(EMBEDDING_MODELS):
+        results_subdir = RESULTS_DIR / f"{timestamp}__{len(models)}-models"
+    else:
+        results_subdir = RESULTS_DIR / f"{timestamp}-all-models"
+    results_subdir.mkdir(exist_ok=True, parents=True)
+    df.to_csv(results_subdir / "benchmark_results.csv", index=False)
+    df.to_excel(results_subdir / "benchmark_results.xlsx", index=False)
+
+    run_config = {
+        "timestamp": timestamp,
+        "path": str(results_subdir),
+        "search_methods": models,
+        "k_values": k_values,
+        "num_queries": len(queries)
+    }
+    with open(RESULTS_DIR / results_subdir / "config.json", 'w', encoding='utf-8') as f:
+        json.dump(run_config, f, indent=4)
+
+    print(f"\n[SUCCESS] Benchmark completed. Results are in: {results_subdir}")
+    print(f"[TIME] Total benchmark time: {overall_time:.2f} seconds")
+    for m, t in finished_models:
+        print(f"[TIME] {m}: {t:.2f} seconds")

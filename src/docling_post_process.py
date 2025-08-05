@@ -1,0 +1,56 @@
+import re
+from pathlib import Path
+
+
+def correct_markdown_numbering(file_path: Path):
+    """
+    Fix the chapter numbers as explained in docling_converter.py
+
+    Args:
+        file_path (Path): Path to file to be corrected
+    """
+    try:
+        original_text = file_path.read_text(encoding="utf-8")
+        lines = original_text.splitlines()
+
+        corrected_lines = []
+        toc_found_and_fixed = False
+
+        for line in lines:
+            # regex101.com
+            match = re.match(r"^(#*\s+)(\d+)(.*)", line)
+
+            if not match:
+                corrected_lines.append(line)
+                continue
+
+            prefix, number_str, rest = match.groups()
+
+            # has to manually be updated in case more strings are discovered
+            # remove numbering from table of contents
+            if not toc_found_and_fixed and ("inhaltsverzeichnis" in rest.lower() or "table of contents" in rest.lower()):
+                corrected_lines.append(f"##{rest.strip()}")
+                toc_found_and_fixed = True
+
+            # In case the toc is already correct (ex. different word template where toc is not defined as heading)
+            elif toc_found_and_fixed:
+                new_number = int(number_str) - 1
+                if new_number > 0:
+                    corrected_lines.append(f"{prefix}{new_number}{rest}")
+                else:
+                    corrected_lines.append(line)
+            else:
+                corrected_lines.append(line)
+
+        corrected_text = "\n".join(corrected_lines)
+
+        # Only serialize if any changes were made
+        # Prevents unnecessary file operations and helps with debugging: no change -> no console log
+        if corrected_text != original_text:
+            file_path.write_text(corrected_text, encoding="utf-8")
+            print(f"    -> [SUCCESS] Chapters corrected in '{file_path.name}'.")
+
+    except FileNotFoundError:
+        print(f"    -> [ERROR] File not found in {file_path}")
+    except Exception as e:
+        print(f"    -> [ERROR] Exception occured during processing of {file_path.name}: {e}")
