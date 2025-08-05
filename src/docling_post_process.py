@@ -2,6 +2,14 @@ import re
 from pathlib import Path
 
 
+def reduce_multiple_spaces(text: str) -> str:
+    """
+    Reduces sequences of 10 or more spaces to exactly 10 spaces.
+    """
+    # Regex to find 10 or more spaces and replace with 10 spaces
+    return re.sub(r' {10,}', '          ', text)
+
+
 def correct_markdown_numbering(file_path: Path):
     """
     Fix the chapter numbers as explained in docling_converter.py
@@ -11,7 +19,8 @@ def correct_markdown_numbering(file_path: Path):
     """
     try:
         original_text = file_path.read_text(encoding="utf-8")
-        lines = original_text.splitlines()
+        cleaned_text = reduce_multiple_spaces(original_text)
+        lines = cleaned_text.splitlines()
 
         corrected_lines = []
         toc_found_and_fixed = False

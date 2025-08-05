@@ -93,6 +93,20 @@ EMBEDDING_MODELS = [
     "nomic-embed-text:v1.5",
     "snowflake-arctic-embed2:568m",
 ]
+
+# TODO: Aktuelle größte Tokenlength etwa 1.000 - 1.300 bei 5182 Zeichen page_context
+"""
+Model               context length
+nomic-embed-text                2048
+mxbai-embed-large:335m          1024
+bge-m3:567m                     1024
+snowflake-arctic-embed2:568m    1024
+all-MiniLM-L6-v2                512
+bge-large:335m                  512
+granite-embedding:278m          512
+granite-embedding:30m           512
+"""
+
 GENERATION_MODELS = [
     "gemma3n:e2b",
     "phi3:3.8b",
@@ -104,6 +118,21 @@ GENERATION_MODELS = [
     "gemma3:12b",
     "mistral-nemo:12b",
 ]
+
+"""
+Model               context length
+mistral-nemo:12b:   1024000
+gemma3:12b:         131072
+granite3.3:8b:      131072
+llama3.1:8b:        131072
+phi3:3.8b:          131072
+qwen3:8b:           40960
+gemma3n:e4b:        32768
+qwen:4b:            32768
+gemma3n:e2b:        32768
+mistral:latest:     32768
+gemma:2b:           8192
+"""
 
 
 def is_relevant_chunk(chunk_text, ground_truth):
@@ -209,18 +238,28 @@ def get_query_count_from_user(query_list: List[str], query_type_name: str) -> Li
 def load_chunks() -> List[Dict[str, Any]]:
     chunk_files = [f for f in CHUNKS_DIR.glob("*.json")]
     chunks = []
+    max_length = 0
+    max_length_file = ""
+    max_length_chunk_id = ""
     for cf in chunk_files:
         with open(cf, "r", encoding="utf-8") as f:
-            chunks.extend(json.load(f))
+            # chunks.extend(json.load(f))
+            file_chunks = json.load(f)
+            chunks.extend(file_chunks)
+            for chunk in file_chunks:
+                current_length = len(chunk['page_content'])
+                if current_length > max_length:
+                    max_length = current_length
+                    max_length_file = chunk['metadata']['source_file']
+                    max_length_chunk_id = chunk['metadata']['chunk_id']
+    if chunks:
+        print(f"\n[INFO] Maximale Chunk-Größe (Zeichen): {max_length} for file {max_length_file} and chunk id {max_length_chunk_id}")
     return chunks
 
 
 def get_embedding_object(model_name: str):
     if model_name == "all-MiniLM-L6-v2":
-        return HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            model_kwargs={'device': 'cpu'}
-        )
+        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={'device': 'cpu'})
     return OllamaEmbeddings(model=model_name)
 
 

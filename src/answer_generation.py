@@ -11,20 +11,6 @@ console = Console()
 def generate_answer(model: str, query: str, k_values: int):
     start = time.time()
     prompt = ChatPromptTemplate.from_template(template=PROMPT_TEMPLATE)
-    """
-    Model               context length
-    mistral-nemo:12b:   1024000
-    gemma3:12b:         131072
-    granite3.3:8b:      131072
-    llama3.1:8b:        131072
-    phi3:3.8b:          131072
-    qwen3:8b:           40960
-    gemma3n:e4b:        32768
-    qwen:4b:            32768
-    gemma3n:e2b:        32768
-    mistral:latest:     32768
-    gemma:2b:           8192
-    """
     llm = OllamaLLM(model=model, num_ctx=4096)
 
     # langchain expression language LCEL
