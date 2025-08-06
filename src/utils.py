@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import pandas as pd
 import uuid
@@ -96,7 +96,7 @@ EMBEDDING_MODELS = [
 
 # TODO: Aktuelle größte Tokenlength etwa 1.000 - 1.300 bei 5182 Zeichen page_context
 """
-Model               context length
+Model                           context length
 nomic-embed-text                2048
 mxbai-embed-large:335m          1024
 bge-m3:567m                     1024
@@ -139,100 +139,134 @@ def is_relevant_chunk(chunk_text, ground_truth):
     return ground_truth.lower() in chunk_text.lower()
 
 
-def get_models_from_user(available_models: List[str], test_mode: bool = False) -> List[str]:
-    print("\nAvailable models:")
+# --- NEUE GENERISCHE FUNKTION ---
+def generic_let_user_choose(
+    prompt: str,
+    options: Optional[List[Any]] = None,
+    allow_multiple: bool = False,
+    validate_func: callable = None
+) -> List[Any]:
+    """
+    A generic function for querying user input.
 
-    for i, model in enumerate(available_models):
-        print(f"  [{i + 1}] {model}")
+    Args:
+        prompt (str): The prompt for the user like "Please choose value k"
+        options (Optional[List[Any]]): A list of predefined options.
+        allow_multiple (bool): Allows multiple options to be selected (separated by commas).
+        validate_func (callable): An optional function for validating the input
+                                  (e.g. for number ranges).
 
-    if test_mode:
-        prompt = "1. Choose model(s) by number (e.g. 1,3): "
-    else:
-        prompt = "1. Choose ONE model by number (e.g. 1): "
+    Returns:
+        List[Any]: A list of valid user selections.
+    """
+    print(f"\n{prompt}")
+
+    if options:
+        for idx, option in enumerate(options):
+            print(f"  [{idx + 1}] {option}")
 
     while True:
-        print(f"\n{prompt}")
         user_input = input("> ").strip()
         if not user_input:
-            print("No input received. Please select at least one model.")
+            print("[ERROR] No input received. Please select at least one option.")
             continue
 
         parts = [p.strip() for p in user_input.split(',')]
-        if not test_mode and len(parts) > 1:
-            print("Only one model can be selected. Please enter a single number.")
+        if not allow_multiple and len(parts) > 1:
+            print("[ERROR] Multiple options selected, but only one is allowed.")
             continue
 
-        selected_models = []
-        valid = True
+        selection = []
+        is_valid = True
+
         for part in parts:
-            try:
-                choice_idx = int(part) - 1
-                if 0 <= choice_idx < len(available_models):
-                    selected_models.append(available_models[choice_idx])
-                else:
-                    print(f"Number '{part}' is invalid. Please try numbers between 1 and {len(available_models)}.")
-                    valid = False
+            if validate_func:
+                if not validate_func(part):
+                    is_valid = False
                     break
-            except ValueError:
-                print(f"Invalid input '{part}'. Please only use numbers.")
-                valid = False
+                selection.append(part)
+            elif options:
+                try:
+                    choice_idx = int(part) - 1
+                    if 0 <= choice_idx < len(options):
+                        selection.append(options[choice_idx])
+                    else:
+                        print(f"[ERROR] Number '{part}' is invalid. Please use numbers between 1 and {len(options)}.")
+                        is_valid = False
+                        break
+                except ValueError:
+                    print(f"[ERROR] Invalid input: '{part}'. Please use numbers only.")
+                    is_valid = False
+                    break
+            else:  # Freitext oder einfache Ja/Nein-Logik
+                selection.append(user_input)
                 break
 
-        if valid and selected_models:
-            result = sorted(list(set(selected_models)), key=selected_models.index)
-            return [result[0]] if not test_mode else result
-        elif valid and not selected_models:
-            print("No valid models selected. Please try again.")
+        if is_valid and selection:
+            if not options and not allow_multiple:
+                return selection
+
+            result = sorted(list(set(selection)), key=selection.index)
+            if not allow_multiple:
+                return [result[0]]
+            return result
+        elif is_valid and not selection:
+            print("[ERROR] Invalid selection. Please try agin.")
+
+
+def get_models_from_user(available_models: List[str], test_mode: bool = False) -> List[str]:
+    return generic_let_user_choose(
+        prompt="1. Select model(s) by number (e.g. 1,3):" if test_mode else "1. Choose one model by number (e.g. 1):",
+        options=available_models,
+        allow_multiple=test_mode
+    )
 
 
 def get_k_values_from_user(test_mode: bool = False) -> List[int]:
-    if test_mode:
-        prompt = "2. Which k-values should be tested? (e.g. 2,4,6)"
-    else:
-        prompt = "2. Which k-value should be used? (e.g. 3)"
-    print(f"\n{prompt}")
+    # Validierungsfunktion für k-Werte
+    def validate_k_value(val: str) -> bool:
+        if val.isdigit() and int(val) > 0:
+            return True
+        print(f"[ERROR] invalid input: '{val}'. Please only use positive, natural numbers.")
+        return False
 
-    while True:
-        user_input = input("> ").strip()
-        if not user_input:
-            print("No input received. Please select at least one k-value.")
-            continue
-
-        parts = [p.strip() for p in user_input.split(',')]
-        selected_ks = []
-        valid = True
-        for part in parts:
-            if part.isdigit() and int(part) > 0:
-                selected_ks.append(int(part))
-            else:
-                print(f"Invalid input '{part}'. Please only input positive, natural numbers.")
-                valid = False
-                break
-
-        if valid and selected_ks:
-            if not test_mode and selected_ks:
-                return [selected_ks[0]]
-            return sorted(list(set(selected_ks)))
-        elif valid and not selected_ks:
-            print("No valid k-values selected. Please try again.")
+    selected_values = generic_let_user_choose(
+        prompt="2. Which k values should be tested? (e.g. 2,4,6)" if test_mode else "2. Which k value should be tested? (e.g. 3)",
+        allow_multiple=test_mode,
+        validate_func=validate_k_value
+    )
+    return [int(val) for val in selected_values]
 
 
 def get_query_count_from_user(query_list: List[str], query_type_name: str) -> List[str]:
     max_count = len(query_list)
-    if query_type_name == 'true':
-        prompt = f"3.1 How many '{query_type_name}' queries should be tested? (max: {max_count})"
-    else:
-        prompt = f"3.2 How many '{query_type_name}' queries should be tested? (max: {max_count})"
-    print(f"\n{prompt}")
-    while True:
+    prompt = f"3.1 How many '{query_type_name}' queries should be tested? (max: {max_count})" if query_type_name == 'true' else f"3.2 How many '{query_type_name}' queries should be tested? (max: {max_count})"
+
+    # Validierungsfunktion für die Anzahl der Queries
+    def validate_query_count(val: str) -> bool:
         try:
-            count = int(input("> "))
+            count = int(val)
             if 0 <= count <= max_count:
-                return query_list[:count]
-            else:
-                print(f"Invalid input. Please only input natural numbers between 0 and {max_count}.")
+                return True
+            print(f"[ERROR] Invalid input. Please enter a number between 0 and {max_count}.")
+            return False
         except ValueError:
-            print("Invalid input. Please input a natural number.")
+            print("[ERROR] Invalid input. Please enter a whole natural number.")
+            return False
+
+    count_str = generic_let_user_choose(prompt=prompt, allow_multiple=False, validate_func=validate_query_count)[0]
+    count = int(count_str)
+    return query_list[:count]
+
+
+def get_search_method_from_user():
+    options = ["Normal search (original query)", "HyDE-search (hypothetical document embedding)"]
+    choice = generic_let_user_choose(
+        prompt="Which search method should be used?",
+        options=options,
+        allow_multiple=False
+    )
+    return "normal" if choice[0] == options[0] else "hyde"
 
 
 def load_chunks() -> List[Dict[str, Any]]:
@@ -277,7 +311,7 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
     finished_models = []
     overall_start = time.time()
 
-    print("Running benchmark...")
+    print("[INFO] Running benchmark...")
     for model in models:
         model_start = time.time()
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Starting: {model}")

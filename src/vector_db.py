@@ -3,8 +3,9 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
+from typing import List
 
-from utils import CHUNKS_DIR, CHROMA_DIR
+from utils import CHUNKS_DIR  # , CHROMA_DIR
 
 embeddings = OllamaEmbeddings(model="snowflake-arctic-embed2:568m")
 
@@ -12,10 +13,13 @@ vector_store = Chroma(
     collection_name="docx_collection",
     embedding_function=embeddings,
     # if commented out, vector db is stored in RAM -> good for quick tests, but db has to be rebuilt for every iteration
-    # which is only good when testing different chunk_sizes, which is not yet implemented
     # (currently only fixed/predefined chunks)
-    persist_directory=str(CHROMA_DIR)
+    # persist_directory=str(CHROMA_DIR)
 )
+
+# Sliding window vs small to big.
+# Teste Chunkgrößen 256, 512, 800
+# HyDE w/ 1 pseudo-doc + query
 
 
 def add_documents(documents, ids):
@@ -101,3 +105,7 @@ def create_chroma_db(doc_path=None):
 
 def do_a_sim_search(query: str, k: int):
     return vector_store.similarity_search(query, k=k)
+
+
+def do_a_sim_search_with_embedding(embedding: List[float], k: int):
+    return vector_store.similarity_search_by_vector(embedding=embedding, k=k)
