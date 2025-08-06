@@ -70,14 +70,9 @@ def analyze_benchmark(benchmark_dir: str):
                 results_row = df[(df['embedding_model'] == model) & (df['k'] == k) & (df['query'] == query)]
 
                 if not results_row.empty:
-                    score = str(results_row['hit_rank'].iloc[0])
-
-                    if score == '1':
-                        k_score[(model, k)] += 5
-                    elif score == '2':
-                        k_score[(model, k)] += 3
-                    elif score == '3':
-                        k_score[(model, k)] += 1
+                    score = int(results_row['hit_rank'].iloc[0])
+                    if score > 0:
+                        k_score[(model, k)] += 10 - score
 
             model_score[model] += k_score[(model, k)]
             print(f"k-Score for Model: {model} and k value: {k} is {k_score[(model, k)]}")

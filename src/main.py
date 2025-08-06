@@ -1,6 +1,7 @@
 from answer_generation import generate_answer
-from utils import GENERATION_MODELS, get_models_from_user, get_k_values_from_user
+from utils import GENERATION_MODELS, EMBEDDING_MODELS, get_models_from_user, get_k_values_from_user, generic_let_user_choose
 from preflight import preflight, run_full_pipeline_for_new_doc
+from vector_db import get_vector_store
 
 
 def main():
@@ -17,6 +18,13 @@ def main():
             run_full_pipeline_for_new_doc(doc_path)
         elif choice == '3':
             print("Chatbot started. Type your query below.")
+
+            embedding_model_name = generic_let_user_choose(
+                prompt="Which embedding model should be used for the search?",
+                options=EMBEDDING_MODELS,
+                allow_multiple=False
+            )[0]
+            vector_store = get_vector_store(embedding_model_name=embedding_model_name, persist=True)
             while True:
                 try:
                     query = input("🔍 Enter your query ('q' to quit): ").strip()
@@ -26,7 +34,13 @@ def main():
 
                     model_to_run = get_models_from_user(available_models=GENERATION_MODELS)[0]
                     k_values = get_k_values_from_user()[0]
-                    response = generate_answer(model=model_to_run, query=query, k_values=k_values)
+                    response = generate_answer(
+                        model=model_to_run,
+                        query=query,
+                        k_values=k_values,
+                        vector_store=vector_store,
+                        embedding_model_name=embedding_model_name
+                    )
 
                     print("LLM Response:")
                     print(response)

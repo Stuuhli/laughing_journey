@@ -43,18 +43,24 @@ Antwort:
 """
 
 TRUE_QUERIES = [
-    "Was sind Ziele der Informationssicherheit?",
+    "Was sind Ziele der Informationssicherheit?",  # Leit
     "Was ist Business Continuity?",
     "Wer hat die Leitlinie unterschrieben?",
-    "Was sind mobile Datenträger?",
+    "Was sind mobile Datenträger?",  # Richt
     "Kann ich die Tür in mein Büro in der Pause offen lassen?",
     "Wie muss mein Smartphone entsperrt werden?",
-    "Welche Anforderungen sind explizit an Passwörter gestellt?",
+    "Welche Anforderungen sind explizit an Passwörter gestellt?",  # Pass
     "Wie sind Passwörter aufzubewahren?",
     "Was zählt als Sicherheitsvorfall?",
-    "Wie sind vertrauliche Papierdokumente zu vernichten?",
+    "Wie sind vertrauliche Papierdokumente zu vernichten?",  # ZZZ
     "Welche Sicherheitszonen gibt es?",
-    "Nach welchen Normen muss vernichtet werden und was sagen diese aus?",
+    "Nach welchen Normen muss vernichtet werden und was sagen diese aus?",  # 12
+    "Who is the CISO?",  # Guide
+    "How should I act in case of a suspicious applicaiton",
+    "What do I have to consider when Teleworking",
+    "Whats's the scope of the policy?",  # Policy
+    "What roles exist in the organization?",
+    "What can you tell me about data protection and privacy?",
 ]
 FALSE_QUERIES = [
     "Bis wann mus ich meine Steuererklärung abgeben?",
@@ -80,7 +86,13 @@ GROUND_TRUTHS = {
     "Was zählt als Sicherheitsvorfall?": "Wenn ein Mitarbeiter die Kompromittierung eines Passwortes",
     "Wie sind vertrauliche Papierdokumente zu vernichten?": "Papierdokumente MÜSSEN mit Akten",
     "Welche Sicherheitszonen gibt es?": "Für die Zutrittsregelung von Betriebsstätten",
-    "Nach welchen Normen muss vernichtet werden und was sagen diese aus?": "Die Vernichtung von Datenträgern MUSS auf Basis der Klassifikation"
+    "Nach welchen Normen muss vernichtet werden und was sagen diese aus?": "Die Vernichtung von Datenträgern MUSS auf Basis der Klassifikation",
+    "Who is the CISO?": "Dr. Heinz-Josef Schlebusch",
+    "How should I act in case of a suspicious applicaiton": "In the event that a computer or application",
+    "What do I have to consider when Teleworking": "Teleworking sites are workplaces that are",
+    "Whats's the scope of the policy?": "This policy defines the KISTERS general strategic",
+    "What roles exist in the organization?": "The overall responsibility for information security",
+    "What can you tell me about data protection and privacy?": "The protection of natural persons in relation",
 }
 
 EMBEDDING_MODELS = [
@@ -131,7 +143,6 @@ gemma3n:e4b:        32768
 qwen:4b:            32768
 gemma3n:e2b:        32768
 mistral:latest:     32768
-gemma:2b:           8192
 """
 
 

@@ -3,36 +3,36 @@ from langchain.prompts.chat import SystemMessagePromptTemplate
 from langchain_ollama import OllamaLLM
 from langchain_ollama import ChatOllama
 from vector_db import do_a_sim_search, do_a_sim_search_with_embedding
-from utils import PROMPT_TEMPLATE, EMBEDDING_MODELS, get_models_from_user, get_embedding_object, get_search_method_from_user
+from utils import PROMPT_TEMPLATE, get_embedding_object, get_search_method_from_user
 from rich.console import Console
 import time
+from langchain_chroma import Chroma
+
 
 console = Console()
 
 
-def generate_answer(model: str, query: str, k_values: int):
+def generate_answer(model: str, query: str, k_values: int, vector_store: Chroma, embedding_model_name: str):
     start = time.time()
 
     search_method = get_search_method_from_user()
 
     prompt = ChatPromptTemplate.from_template(template=PROMPT_TEMPLATE)
-    llm = OllamaLLM(model=model, num_ctx=4096)
+    llm = OllamaLLM(model=model, num_ctx=16384)
     chain = prompt | llm
 
-    # results = do_a_sim_search(query, k=k_values)
     results = []
 
     if search_method == "hyde":
-        embedding_model_name = get_models_from_user(available_models=EMBEDDING_MODELS, test_mode=False)[0]
         embedding_model = get_embedding_object(embedding_model_name)
         hyde_chat_model = ChatOllama(model="phi3:3.8b")
         hyde_embedding = get_hypo_embedding(query=query, embedding_model=embedding_model, chat_model=hyde_chat_model)
-        results = do_a_sim_search_with_embedding(embedding=hyde_embedding, k=k_values)
+        results = do_a_sim_search_with_embedding(embedding=hyde_embedding, k=k_values, vector_store=vector_store)
 
         print(f"\n[INFO] Search with HyDe method (model: {embedding_model_name})")
 
     else:
-        results = do_a_sim_search(query, k=k_values)
+        results = do_a_sim_search(query, k=k_values, vector_store=vector_store)
         print("\n[INFO] Search with normal method")
 
     # Debug-Ausgabe: Zeigt an, was gefunden wurde
@@ -56,11 +56,11 @@ def generate_answer(model: str, query: str, k_values: int):
 
 def get_hypo_embedding(query: str, embedding_model, chat_model):
     hypo_doc = get_hypo_doc(query, chat_model)
-    hypo_embedding = embedding_model.embed_document([hypo_doc])
+    hypo_embedding = embedding_model.embed_documents([hypo_doc])
     return hypo_embedding[0]
 
 
-def get_hypo_doc(query, embedding_model, chat_model):
+def get_hypo_doc(query, chat_model):
     template = """Stell dir vor, du bist ein Experte, der eine ausführliche Erklärung zum Thema '{query}' verfasst.
     Deine Antwort sollte umfassend sein und alle wichtigen Punkte enthalten, die in den obersten Suchergebnissen zu finden sind."""
 
@@ -70,4 +70,9 @@ def get_hypo_doc(query, embedding_model, chat_model):
 
     response = chat_model.invoke(messages)
     hypo_doc = response.content
+
+    print("\n--- Generierte hypothetische Antwort (HyDE) ---")
+    print(hypo_doc)
+    print("-" * 40)
+
     return hypo_doc

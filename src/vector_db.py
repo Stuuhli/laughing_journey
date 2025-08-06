@@ -2,43 +2,34 @@ import json
 from pathlib import Path
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
 from typing import List
 
-from utils import CHUNKS_DIR  # , CHROMA_DIR
-
-embeddings = OllamaEmbeddings(model="snowflake-arctic-embed2:568m")
-
-vector_store = Chroma(
-    collection_name="docx_collection",
-    embedding_function=embeddings,
-    # if commented out, vector db is stored in RAM -> good for quick tests, but db has to be rebuilt for every iteration
-    # (currently only fixed/predefined chunks)
-    # persist_directory=str(CHROMA_DIR)
-)
+from utils import CHUNKS_DIR, CHROMA_DIR, get_embedding_object
 
 # Sliding window vs small to big.
 # Teste Chunkgrößen 256, 512, 800
 # HyDE w/ 1 pseudo-doc + query
 
 
-def add_documents(documents, ids):
+def get_vector_store(embedding_model_name: str, persist: bool = True):
+    embeddings = get_embedding_object(embedding_model_name)
+    model_dir = f"{CHROMA_DIR}/chroma__{embedding_model_name.replace(':', '-').replace('/', '-')}"
+    persist_dir = model_dir if persist else None
+
+    return Chroma(
+        collection_name="docx_collection",
+        embedding_function=embeddings,
+        persist_directory=persist_dir
+    )
+
+
+def add_documents(documents, ids, vector_store):
     vector_store.add_documents(documents=documents, ids=ids)
     print(f"[SUCCESS] Added {len(documents)} new documents")
 
 
-def update_chroma_db(update=False, filename=None, doc_path=None):
-    """
-    Updates all chunks from a specific source file in the vector store.
-    It deletes the old chunks and adds the new ones from the corresponding .json file.
-
-    Args:
-        filename (str): The name of the source file (e.g., "KISTERS_IS_PasswortRichtlinie.txt").
-        vector_store (Chroma): The Chroma vector store instance.
-    """
-    """
-    Updates Chroma-DB for a specific document or all documents. Optional: Update mode.
-    """
+def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc_path=None):
+    vector_store = get_vector_store(embedding_model_name, persist=True)
     if doc_path:
         filenames = [Path(doc_path).name]
     elif filename:
@@ -83,10 +74,8 @@ def update_chroma_db(update=False, filename=None, doc_path=None):
         print(f"[SUCCESS] Update for {fname} completed.")
 
 
-def delete_chroma_entry(chroma_id: str):
-    """
-    Deletes an entry from the Chroma DB based on the chunk_id.
-    """
+def delete_chroma_entry(chroma_id: str, embedding_model_name: str):
+    vector_store = get_vector_store(embedding_model_name, persist=True)
     print(f"[INFO] Delete chroma entry with ID: {chroma_id}")
     try:
         vector_store.delete(ids=[chroma_id])
@@ -95,17 +84,14 @@ def delete_chroma_entry(chroma_id: str):
         print(f"[ERROR] Error occured during deletion: {e}")
 
 
-def create_chroma_db(doc_path=None):
-    """
-    Recreates the Chroma DB from all or a specific document.
-    """
+def create_chroma_db(embedding_model_name: str, doc_path=None):
     print("[INFO] Recreate Chroma-DB...")
-    update_chroma_db(update=True, doc_path=doc_path)
+    update_chroma_db(embedding_model_name=embedding_model_name, update=True, doc_path=doc_path)
 
 
-def do_a_sim_search(query: str, k: int):
+def do_a_sim_search(query: str, k: int, vector_store: Chroma):
     return vector_store.similarity_search(query, k=k)
 
 
-def do_a_sim_search_with_embedding(embedding: List[float], k: int):
+def do_a_sim_search_with_embedding(embedding: List[float], k: int, vector_store: Chroma):
     return vector_store.similarity_search_by_vector(embedding=embedding, k=k)
