@@ -4,6 +4,7 @@ import json
 import re
 import hashlib
 from utils import sliding_window_chunk, CHUNKS_DIR
+# from tokenization import tokenize_and_chunk
 
 PROJECT_DIR = Path(__file__).parent.parent
 INPUT_PATH = PROJECT_DIR / "data" / "converted"
@@ -111,7 +112,3 @@ def create_chunks_for_all(update=False, doc_path=None, max_chunk_length=1024, ch
 
     print("-" * 20)
     print(f"[SUCCESS] Finished processing. {files_processed} JSON files created in {OUTPUT_PATH}")
-
-
-if __name__ == "__main__":
-    create_chunks_for_all()

@@ -36,7 +36,8 @@ def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc
     elif filename:
         filenames = [filename]
     else:
-        # Alle .json Dateien im CHUNKS_DIR
+        # Use .json files in CHUNKS_DIR instead
+        # Fallback for the case in which no model-specific chunks have been created yet
         filenames = [f.name for f in CHUNKS_DIR.glob("*.json")]
 
     for fname in filenames:

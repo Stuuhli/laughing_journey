@@ -80,7 +80,7 @@ def get_hypo_embedding(query: str, embedding_model, chat_model):
 
 def get_hypo_doc(query, chat_model):
     template = """Stell dir vor, du bist ein Experte, der eine ausführliche Erklärung zum Thema '{query}' verfasst.
-    Deine Antwort sollte umfassend sein und alle wichtigen Punkte enthalten, die in den obersten Suchergebnissen zu finden sind."""
+    Deine Antwort sollte umfasd sein und alle wichtigen Punkte enthalten, die in den obersten Suchergebnissen zu finden sind."""
 
     system_message_prompt = SystemMessagePromptTemplate.from_template(template=template)
     chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt])

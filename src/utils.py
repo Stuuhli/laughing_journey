@@ -104,18 +104,16 @@ EMBEDDING_MODELS = [
     "granite-embedding:278m",
     "mxbai-embed-large:335m",
     "nomic-embed-text:v1.5",
-    "qwen3:0.6b",
     "snowflake-arctic-embed2:568m",
 ]
 EMBEDDING_MAX_LENGTHS = {
-    "qwen3:0.6b": 40960,
     "bge-m3:567m": 8192,
     "snowflake-arctic-embed2:568m": 8192,
     "nomic-embed-text:v1.5": 2048,
     "mxbai-embed-large:335m": 512,
     "all-minilm:33m": 512,
     "bge-large:335m": 512,
-    "granite-embedding:278m": 512,
+    "granite-embedding:278m": 512,  # der King, the GOAT
     "granite-embedding:30m": 512,
 }
 # TODO: Aktuelle größte Tokenlength etwa 1.000 - 1.300 bei 5182 Zeichen page_context
@@ -306,7 +304,8 @@ def load_chunks(chunk_dir=None) -> List[Dict[str, Any]]:
 
 
 def get_embedding_object(model_name: str):
-    return OllamaEmbeddings(model=model_name)
+    num_ctx = EMBEDDING_MAX_LENGTHS[model_name]
+    return OllamaEmbeddings(model=model_name, num_ctx=num_ctx)
 
 
 def run_benchmark(models: List[str], k_values: List[int], queries: List[str], ground_truths: Dict[str, str]):

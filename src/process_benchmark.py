@@ -22,11 +22,12 @@ def get_benchmarks() -> str:
     for run_name in os.listdir(RESULTS_DIR):
         run_path = RESULTS_DIR / run_name
 
-        # Nur Ordner sollen hier liegen
         if run_path.is_dir():
             config = parse_config(run_path / "config.json")
             if config:
                 runs.append(config)
+    # Newest entries at ther top
+    runs.reverse()
 
     for i, run in enumerate(runs):
         ts = datetime.strptime(run['timestamp'], "%Y-%m-%d_%H-%M").strftime("%d.%m.%Y %H:%M")  # convert to human-readable format
@@ -53,7 +54,6 @@ def analyze_benchmark(benchmark_dir: str):
 
     print(f"nLese Daten aus {csv_file}")
     df = pd.read_csv(csv_file)
-    print(df.describe())
 
     unique_k_vals = sorted(df['k'].unique())
     unique_embedding_models = sorted(df['embedding_model'].unique())
