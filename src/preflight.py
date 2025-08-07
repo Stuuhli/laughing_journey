@@ -2,7 +2,7 @@ import os
 from docling_converter import convert_all_docx
 from chunking import create_chunks_for_all
 from vector_db import update_chroma_db
-from utils import CONVERTED_DIR, CHUNKS_DIR, CHROMA_DIR, get_models_from_user, EMBEDDING_MODELS
+from utils import CONVERTED_DIR, CHUNKS_DIR, CHROMA_DIR, get_models_from_user, EMBEDDING_MODELS, EMBEDDING_MAX_LENGTHS, get_chunk_dir_for_model
 import shutil
 
 
@@ -29,23 +29,48 @@ def check_and_manage_converted():
 
 def check_and_manage_chunks():
     print("\n--- [PRE] Check: Chunks ---")
-    if os.path.exists(CHUNKS_DIR):
-        print("Chunks directory exists.")
-        action = input("Update chunks (a), delete (l), create new (n), skip (s)? ").strip().lower()
-        if action == 'a':
-            create_chunks_for_all(update=True)
-        elif action == 'l':
-            for f in os.listdir(CHUNKS_DIR):
-                os.remove(os.path.join(CHUNKS_DIR, f))
-            print("All chunks deleted.")
-        elif action == 'n':
-            create_chunks_for_all(update=False)
-        else:
-            print("Skipping chunks.")
+    # Finde alle vorhandenen modell-spezifischen Chunk-Ordner
+    chunk_base = CHUNKS_DIR.parent
+    existing_chunk_dirs = [d for d in os.listdir(chunk_base) if d.startswith("chunks__")]
+
+    print("Chunks-Verzeichnisse:")
+    for d in existing_chunk_dirs:
+        print(f"  - {d}")
+
+    print("\nOptionen:")
+    print("  [a] Alle Chunks für alle Modelle neu erzeugen")
+    print("  [d] Einzelnen Chunk-Ordner löschen")
+    print("  [n] Neue Chunks für ein Modell erzeugen")
+    print("  [s] Überspringen")
+
+    action = input("Aktion wählen: ").strip().lower()
+    if action == 'a':
+        for emb in EMBEDDING_MODELS:
+            max_length = EMBEDDING_MAX_LENGTHS[emb]
+            chunk_dir = get_chunk_dir_for_model(emb)
+            print(f"[INFO] Erzeuge Chunks für {emb} (max_length={max_length}) im Ordner {chunk_dir}")
+            create_chunks_for_all(update=True, max_chunk_length=max_length, chunk_dir=chunk_dir)
+    elif action == 'd':
+        print("Wähle zu löschenden Chunk-Ordner (Embedding-Modell):")
+        for i, emb in enumerate(EMBEDDING_MODELS):
+            print(f"  [{i + 1}] {emb}")
+        idx = int(input("> ")) - 1
+        if 0 <= idx < len(EMBEDDING_MODELS):
+            emb = EMBEDDING_MODELS[idx]
+            chunk_dir = get_chunk_dir_for_model(emb)
+            if os.path.exists(chunk_dir):
+                shutil.rmtree(chunk_dir)
+                print(f"[SUCCESS] Chunk-Ordner für {emb} gelöscht: {chunk_dir}")
+            else:
+                print(f"[WARN] Ordner nicht gefunden: {chunk_dir}")
+    elif action == 'n':
+        embedding_model_name = get_models_from_user(available_models=EMBEDDING_MODELS, test_mode=False)[0]
+        max_length = EMBEDDING_MAX_LENGTHS[embedding_model_name]
+        chunk_dir = get_chunk_dir_for_model(embedding_model_name)
+        print(f"[INFO] Erzeuge Chunks für {embedding_model_name} (max_length={max_length}) im Ordner {chunk_dir}")
+        create_chunks_for_all(update=True, max_chunk_length=max_length, chunk_dir=chunk_dir)
     else:
-        print("Chunks directory does not exist. Starting creation.")
-        os.makedirs(CHUNKS_DIR, exist_ok=True)
-        create_chunks_for_all(update=False)
+        print("Skipping chunks.")
 
 
 def check_and_manage_chroma():
@@ -104,7 +129,9 @@ def run_full_pipeline_for_new_doc(doc_path):
     convert_all_docx(doc_path=clean_path)
     txt_filename = os.path.splitext(os.path.basename(clean_path))[0] + ".txt"
     txt_path = str(CONVERTED_DIR / txt_filename)
-    create_chunks_for_all(doc_path=txt_path)
     embedding_model_name = get_models_from_user(available_models=EMBEDDING_MODELS, test_mode=False)[0]
+    max_length = EMBEDDING_MAX_LENGTHS[embedding_model_name]
+    chunk_dir = get_chunk_dir_for_model(embedding_model_name)
+    create_chunks_for_all(doc_path=txt_path, update=True, max_chunk_length=max_length, chunk_dir=chunk_dir)
     update_chroma_db(embedding_model_name=embedding_model_name, doc_path=txt_path)
     print("--- [PIPELINE] Pipeline finished. ---")

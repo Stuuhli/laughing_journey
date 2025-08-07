@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from typing import List
 
-from utils import CHUNKS_DIR, CHROMA_DIR, get_embedding_object
+from utils import CHUNKS_DIR, CHROMA_DIR, get_embedding_object, get_chunk_dir_for_model
 
 # Sliding window vs small to big.
 # Teste Chunkgrößen 256, 512, 800
@@ -30,6 +30,7 @@ def add_documents(documents, ids, vector_store):
 
 def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc_path=None):
     vector_store = get_vector_store(embedding_model_name, persist=True)
+    chunk_dir = get_chunk_dir_for_model(embedding_model_name)
     if doc_path:
         filenames = [Path(doc_path).name]
     elif filename:
@@ -53,7 +54,7 @@ def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc
             print("[INFO] -> No old chunks found to delete or update not enabled.")
         # 2. Load new chunks from the corresponding JSON file ⚙️
         print("[INFO] [2/3] Loading new chunks from generated JSON file...")
-        json_path = CHUNKS_DIR / fname.replace('.txt', '.json') if fname.endswith('.txt') else CHUNKS_DIR / fname
+        json_path = CHUNKS_DIR / fname.replace('.txt', '.json') if fname.endswith('.txt') else chunk_dir / fname
         if not json_path.exists():
             print(f"[ERROR] -> New chunk file not found at: {json_path}")
             print("[ERROR] -> Please run the chunking script for the updated file first.")

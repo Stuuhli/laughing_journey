@@ -3,7 +3,7 @@ from langchain.prompts.chat import SystemMessagePromptTemplate
 from langchain_ollama import OllamaLLM
 from langchain_ollama import ChatOllama
 from vector_db import do_a_sim_search, do_a_sim_search_with_embedding
-from utils import PROMPT_TEMPLATE, get_embedding_object, get_search_method_from_user
+from utils import PROMPT_TEMPLATE, get_embedding_object, get_search_method_from_user, load_chunks, get_chunk_dir_for_model
 from rich.console import Console
 import time
 from langchain_chroma import Chroma
@@ -42,7 +42,25 @@ def generate_answer(model: str, query: str, k_values: int, vector_store: Chroma,
         print(f"[{idx + 1}/{len(results)}] -> Chunk from '{res.metadata.get('source_file')}': {res.page_content[:80]}...")
     print("-" * 25)
 
-    context_string = "\n\n---\n\n".join([doc.page_content for doc in results])
+    # context_string = "\n\n---\n\n".join([doc.page_content for doc in results])
+    found_chapters = set()
+    for doc in results:
+        chapter_tag = doc.metadata.get("chapter_path")
+        if chapter_tag:
+            found_chapters.add(chapter_tag)
+    all_chunks = load_chunks(chunk_dir=get_chunk_dir_for_model(embedding_model_name))
+    chapter_chunks = []
+    for chapter_tag in found_chapters:
+        chapter_chunks.extend([c for c in all_chunks if c["metadata"].get("chapter_path") == chapter_tag])
+
+    chapter_chunks = sorted(
+        chapter_chunks,
+        key=lambda c: (
+            c["metadata"].get("source_file", ""),
+            c["metadata"].get("Chapter_number", "0")
+        )
+    )
+    context_string = "\n\n---\n\n".join([c["page_content"] for c in chapter_chunks])
 
     with console.status("[INFO] Request is being processed by the LLM ...", spinner='dots12', spinner_style='white'):
         response = chain.invoke({

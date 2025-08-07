@@ -1,11 +1,12 @@
 from typing import List, Dict, Any, Optional
 import json
+from pathlib import Path
 import pandas as pd
 import uuid
 import datetime
-from pathlib import Path
+import time
 from langchain_ollama import OllamaEmbeddings
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.documents import Document
 from langchain_chroma import Chroma
 
 # --- Konstanten bleiben unverändert ---
@@ -96,28 +97,28 @@ GROUND_TRUTHS = {
 }
 
 EMBEDDING_MODELS = [
-    "all-MiniLM-L6-v2",
+    "all-minilm:33m",
     "bge-large:335m",
     "bge-m3:567m",
     "granite-embedding:30m",
     "granite-embedding:278m",
     "mxbai-embed-large:335m",
     "nomic-embed-text:v1.5",
+    "qwen3:0.6b",
     "snowflake-arctic-embed2:568m",
 ]
-
+EMBEDDING_MAX_LENGTHS = {
+    "qwen3:0.6b": 40960,
+    "bge-m3:567m": 8192,
+    "snowflake-arctic-embed2:568m": 8192,
+    "nomic-embed-text:v1.5": 2048,
+    "mxbai-embed-large:335m": 512,
+    "all-minilm:33m": 512,
+    "bge-large:335m": 512,
+    "granite-embedding:278m": 512,
+    "granite-embedding:30m": 512,
+}
 # TODO: Aktuelle größte Tokenlength etwa 1.000 - 1.300 bei 5182 Zeichen page_context
-"""
-Model                           context length
-nomic-embed-text                2048
-mxbai-embed-large:335m          1024
-bge-m3:567m                     1024
-snowflake-arctic-embed2:568m    1024
-all-MiniLM-L6-v2                512
-bge-large:335m                  512
-granite-embedding:278m          512
-granite-embedding:30m           512
-"""
 
 GENERATION_MODELS = [
     "gemma3n:e2b",
@@ -280,8 +281,10 @@ def get_search_method_from_user():
     return "normal" if choice[0] == options[0] else "hyde"
 
 
-def load_chunks() -> List[Dict[str, Any]]:
-    chunk_files = [f for f in CHUNKS_DIR.glob("*.json")]
+def load_chunks(chunk_dir=None) -> List[Dict[str, Any]]:
+    if chunk_dir is None:
+        chunk_dir = CHUNKS_DIR
+    chunk_files = [f for f in Path(chunk_dir).glob("*.json")]
     chunks = []
     max_length = 0
     max_length_file = ""
@@ -303,20 +306,22 @@ def load_chunks() -> List[Dict[str, Any]]:
 
 
 def get_embedding_object(model_name: str):
-    if model_name == "all-MiniLM-L6-v2":
-        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={'device': 'cpu'})
     return OllamaEmbeddings(model=model_name)
 
 
 def run_benchmark(models: List[str], k_values: List[int], queries: List[str], ground_truths: Dict[str, str]):
     chunks = load_chunks()
-    from langchain_core.documents import Document
+
     docs = [Document(page_content=c["page_content"], metadata=c.get("metadata", {})) for c in chunks]
     RESULTS_DIR.mkdir(exist_ok=True, parents=True)
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
     results = []
 
-    import time
+    for model in models:
+        chunk_dir = get_chunk_dir_for_model(model)
+        chunks = load_chunks(chunk_dir=chunk_dir)
+        docs = [Document(page_content=c["page_content"], metadata=c.get("metadata", {})) for c in chunks]
+
     total_tasks = len(models) * len(k_values) * len(queries)
     task_count = 0
     finished_models = []
@@ -392,3 +397,15 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
     print(f"[TIME] Total benchmark time: {overall_time:.2f} seconds")
     for m, t in finished_models:
         print(f"[TIME] {m}: {t:.2f} seconds")
+
+
+def sliding_window_chunk(text, max_length, stride=0.2):
+    """Teile Text mit Sliding Window in überlappende Chunks."""
+    window = max_length
+    step = int(window * (1 - stride))
+    return [text[i:i + window] for i in range(0, max(len(text) - window + 1, 1), step)]
+
+
+def get_chunk_dir_for_model(model_name: str):
+    safe_name = model_name.replace(":", "-").replace("/", "-")
+    return Path(__file__).parent.parent / "data" / "chunks" / f"chunks__{safe_name}"

@@ -3,6 +3,7 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter
 import json
 import re
 import hashlib
+from utils import sliding_window_chunk, CHUNKS_DIR
 
 PROJECT_DIR = Path(__file__).parent.parent
 INPUT_PATH = PROJECT_DIR / "data" / "converted"
@@ -33,10 +34,15 @@ def get_chunk_id(text: str, meta: dict) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def create_chunks_for_all(update=False, doc_path=None):
+def create_chunks_for_all(update=False, doc_path=None, max_chunk_length=1024, chunk_dir=None):
     """
     Creates chunks for all (or a single) converted document(s). Optional: update mode.
     """
+    # the max_chunk_length has to me multiplied by 3.5 to reach the effect of chunk -> token conversion, which is a factor between roughly 4-6
+    max_chunk_length = int(max_chunk_length * 3.5)
+    if chunk_dir is None:
+        chunk_dir = CHUNKS_DIR
+    chunk_dir.mkdir(exist_ok=True)
     OUTPUT_PATH.mkdir(exist_ok=True)
     if doc_path:
         input_files = [Path(doc_path)]
@@ -80,19 +86,22 @@ def create_chunks_for_all(update=False, doc_path=None):
             if not content:
                 continue
 
-            # Eindeutige ID
-            meta["chunk_id"] = get_chunk_id(content, meta)
-
-            filtered_chunks.append({
-                "page_content": content,
-                "metadata": meta
-            })
+            if len(content) > max_chunk_length:
+                subchunks = sliding_window_chunk(content, max_length=max_chunk_length)
+                for i, sub in enumerate(subchunks):
+                    sub_meta = meta.copy()
+                    sub_meta["subchunk"] = i
+                    sub_meta["chunk_id"] = get_chunk_id(sub, sub_meta)
+                    filtered_chunks.append({"page_content": sub, "metadata": sub_meta})
+            else:
+                meta["chunk_id"] = get_chunk_id(content, meta)
+                filtered_chunks.append({"page_content": content, "metadata": meta})
 
         if not filtered_chunks:
             print(f"[WARN] No chunks created for file: {file_path.name}")
             continue
 
-        output_json_path = OUTPUT_PATH / f"{file_path.stem}.json"
+        output_json_path = chunk_dir / f"{file_path.stem}.json"
         if update and output_json_path.exists():
             print(f"[INFO] Overwrite existing file: {output_json_path}")
         with open(output_json_path, "w", encoding="utf-8") as f:
