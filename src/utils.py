@@ -8,6 +8,7 @@ import time
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
+import random
 
 # --- Konstanten bleiben unverändert ---
 PROJECT_DIR = Path(__file__).parent.parent
@@ -19,20 +20,13 @@ CHROMA_DIR = PROJECT_DIR / "data" / "chroma"
 
 PROMPT_TEMPLATE = """
 Du bist ein präziser und hilfreicher Assistent in einem RAG-System.
-Antworte auf die Frage des Benutzers ausschließlich auf Basis des folgendes Kontexts.
+Antworte auf die Frage des Benutzers ausschließlich auf Basis des folgenden Kontexts.
 Jeder Kontextabschnitt beinhaltet auch Metadaten, auf die du dich beziehen sollst.
-Die Schlüsselwörter (MUSS, DARF NUR, VERPFLICHTEND), (SOLL, EMPFOHLEN), (KANN, OPTIONAL)
-MÜSSEN von dir in den Antworten ebenfalls groß geschrieben werden, und MÜSEEN mit *fett* gemacht werden.
 
 Deine Aufgaben:
 1.  Formuliere eine präzise Antwort auf die Frage.
-2.  Wenn die benötigten Fakten für deine Antwort im Kontext nicht enthalten ist, sage klar und deutlich,
-    dass du keine Antwort finden konntest. Erfinde nichts. Bleibe immer bei dem Kontext.
-3.  Erwähne stets, dass sich deine Informationen nur auf den gefundenen Kontext,
-    bzw. die Quellen beziehen und weitere Informationen fehlen könnten.
-4.  Zitiere am Ende deiner Antwort für JEDE verwendete Information
-    IMMER die genaue Quelle und die Seitenzahl im Format [Dokument-Quelle, Seite X].
-    Du kannst mehrere Quellen zitieren.
+2.  Wenn die benötigten Fakten für deine Antwort im Kontext nicht enthalten ist, sage klar und deutlich, dass du keine Antwort finden konntest. Erfinde nichts. Bleibe immer bei dem Kontext.
+3.  Erwähne stets, dass sich deine Informationen nur auf den gefundenen Kontext beziehen und weitere Informationen fehlen könnten.
 
 Kontext:
 {context}
@@ -241,7 +235,7 @@ def get_k_values_from_user(test_mode: bool = False) -> List[int]:
         return False
 
     selected_values = generic_let_user_choose(
-        prompt="2. Which k values should be tested? (e.g. 2,4,6)" if test_mode else "2. Which k value should be tested? (e.g. 3)",
+        prompt="2. Which k values should be tested? (e.g. 2,4,6)" if test_mode else "2. Which k value should be used? (e.g. 3)",
         allow_multiple=test_mode,
         validate_func=validate_k_value
     )
@@ -308,18 +302,24 @@ def get_embedding_object(model_name: str):
     return OllamaEmbeddings(model=model_name, num_ctx=num_ctx)
 
 
-def run_benchmark(models: List[str], k_values: List[int], queries: List[str], ground_truths: Dict[str, str]):
-    chunks = load_chunks()
+def get_context_mode_from_user() -> bool:
+    options = [
+        "Small-to-Big (volle Kapitel aus Treffern laden)",
+        "Nur Top-K direkte Treffer verwenden"
+    ]
+    choice = generic_let_user_choose(
+        prompt="Which context strategy should be used?",
+        options=options,
+        allow_multiple=False
+    )
+    return choice[0] == options[0]
 
-    docs = [Document(page_content=c["page_content"], metadata=c.get("metadata", {})) for c in chunks]
+
+def run_benchmark(models: List[str], k_values: List[int], queries: List[str], ground_truths: Dict[str, str], use_full_chapters: bool = True):
+    chunks = load_chunks()
     RESULTS_DIR.mkdir(exist_ok=True, parents=True)
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
     results = []
-
-    for model in models:
-        chunk_dir = get_chunk_dir_for_model(model)
-        chunks = load_chunks(chunk_dir=chunk_dir)
-        docs = [Document(page_content=c["page_content"], metadata=c.get("metadata", {})) for c in chunks]
 
     total_tasks = len(models) * len(k_values) * len(queries)
     task_count = 0
@@ -330,39 +330,75 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
     for model in models:
         model_start = time.time()
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Starting: {model}")
+
+        chunk_dir = get_chunk_dir_for_model(model)
+        chunks = load_chunks(chunk_dir=chunk_dir)
+        docs = [Document(page_content=c["page_content"], metadata=c.get("metadata", {})) for c in chunks]
+
         emb = get_embedding_object(model)
         col_name = f"benchmark_collection_{uuid.uuid4().hex}"
-        db = Chroma.from_documents(documents=docs, embedding=emb, persist_directory=None, collection_name=col_name)  # benchmark-db ist nicht persistent
+        db = Chroma.from_documents(documents=docs, embedding=emb, persist_directory=None, collection_name=col_name)
+
         for k in k_values:
             for query in queries:
                 res = db.similarity_search_with_score(query, k=k)
                 ground_truth = ground_truths.get(query)
                 hit_found, hit_rank, score, doc_title, content = False, -1, None, None, None
 
-                for idx, (doc, score_val) in enumerate(res, 1):
-                    if ground_truth and is_relevant_chunk(doc.page_content, ground_truth):
-                        hit_found = True
-                        hit_rank = idx
-                        doc_title = doc.metadata.get('source_file', 'N/A')
-                        content = doc.page_content
-                        score = score_val
-                        break
+                if use_full_chapters:
+                    # Falls Kapitel-Modus, alle Chunks aus Kapitel holen
+                    if res:
+                        first_doc = res[0][0]
+                        chapter_id = first_doc.metadata.get("chapter_path")
+                        if chapter_id:
+                            chapter_chunks = [
+                                c["page_content"]
+                                for c in chunks
+                                if c["metadata"].get("chapter_path") == chapter_id
+                            ]
+                            content = "\n".join(chapter_chunks)
+                        else:
+                            content = first_doc.page_content
+                        doc_title = first_doc.metadata.get("source_file", "N/A")
+
+                        # Trefferprüfung im Kapitel
+                        if ground_truth and any(is_relevant_chunk(c, ground_truth) for c in chapter_chunks):
+                            hit_found = True
+                            hit_rank = 1
+                            score = res[0][1]
+
+                else:
+                    # Normal: nur Top-K Chunks prüfen
+                    for idx, (doc, score_val) in enumerate(res, 1):
+                        if ground_truth and is_relevant_chunk(doc.page_content, ground_truth):
+                            hit_found = True
+                            hit_rank = idx
+                            doc_title = doc.metadata.get('source_file', 'N/A')
+                            content = doc.page_content
+                            score = score_val
+                            break
 
                 if not hit_found:
-                    content = "Ground truth could not be retrieved from chunks"
                     if res:
                         doc, score_val = res[0]
                         doc_title = doc.metadata.get('source_file', 'N/A')
+                        content = content or doc.page_content
                         score = score_val
                     else:
                         doc_title = "N/A"
+                        content = "Ground truth could not be retrieved from chunks"
                         score = None
 
                 results.append({
-                    'embedding_model': model, 'k': k, 'query': query,
+                    'embedding_model': model,
+                    'k': k,
+                    'query': query,
                     'query_type': 'true' if query in TRUE_QUERIES else 'false',
-                    'score': score, 'hit_at_k': hit_found, 'hit_rank': hit_rank,
-                    'titel': doc_title, 'content': content,
+                    'score': score,
+                    'hit_at_k': hit_found,
+                    'hit_rank': hit_rank,
+                    'titel': doc_title,
+                    'content': content,
                 })
                 task_count += 1
                 print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {task_count}/{total_tasks} {model} k={k} query='{query}' complete")
@@ -372,13 +408,32 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Finished: {model} in {model_time:.2f} seconds")
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Models completed so far: {[m[0] for m in finished_models]}")
 
+    # Ergebnisse speichern
     overall_time = time.time() - overall_start
     df = pd.DataFrame(results)
-    if len(models) != len(EMBEDDING_MODELS):
-        results_subdir = RESULTS_DIR / f"{timestamp}__{len(models)}-models"
-    else:
-        results_subdir = RESULTS_DIR / f"{timestamp}-all-models"
+    # Summaries je (embedding_model, k) erzeugen
+    summary_rows = []
+    for (model, k), sub in df.groupby(["embedding_model", "k"]):
+        rows = sub[["hit_at_k", "hit_rank"]].to_dict(orient="records")
+        base = compute_metrics_from_rows(rows)
+        boot = bootstrap_metrics(rows, B=500)
+        summary_rows.append({
+            "embedding_model": model,
+            "k": k,
+            "use_full_chapters": use_full_chapters,
+            "queries": base["queries"],
+            "hit_rate": base["hit_rate"],
+            "hit_rate_ci_low": boot["hit_ci"][0],
+            "hit_rate_ci_high": boot["hit_ci"][1],
+            "mrr": base["mrr"],
+            "mrr_ci_low": boot["mrr_ci"][0],
+            "mrr_ci_high": boot["mrr_ci"][1],
+        })
+    results_subdir = RESULTS_DIR / f"{timestamp}__{len(models)}-models" if len(models) != len(EMBEDDING_MODELS) else RESULTS_DIR / f"{timestamp}-all-models"
     results_subdir.mkdir(exist_ok=True, parents=True)
+    summary = pd.DataFrame(summary_rows)
+    summary.to_csv(results_subdir / "benchmark_summary.csv", index=False)
+    summary.to_excel(results_subdir / "benchmark_summary.xlsx", index=False)
     df.to_csv(results_subdir / "benchmark_results.csv", index=False)
     df.to_excel(results_subdir / "benchmark_results.xlsx", index=False)
 
@@ -387,9 +442,11 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
         "path": str(results_subdir),
         "search_methods": models,
         "k_values": k_values,
-        "num_queries": len(queries)
+        "num_queries": len(queries),
+        "use_full_chapters": use_full_chapters,
+        "retrieval_mode": "small_to_big" if use_full_chapters else "topk_only"
     }
-    with open(RESULTS_DIR / results_subdir / "config.json", 'w', encoding='utf-8') as f:
+    with open(results_subdir / "config.json", 'w', encoding='utf-8') as f:
         json.dump(run_config, f, indent=4)
 
     print(f"\n[SUCCESS] Benchmark completed. Results are in: {results_subdir}")
@@ -408,3 +465,39 @@ def sliding_window_chunk(text, max_length, stride=0.2):
 def get_chunk_dir_for_model(model_name: str):
     safe_name = model_name.replace(":", "-").replace("/", "-")
     return Path(__file__).parent.parent / "data" / "chunks" / f"chunks__{safe_name}"
+
+
+def _reciprocal_rank(rank: int) -> float:
+    return 1.0 / rank if rank > 0 else 0.0
+
+
+def compute_metrics_from_rows(rows):
+    # rows: Liste von dicts mit Feldern: hit_at_k(bool), hit_rank(int)
+    n = len(rows) or 1
+    hit = sum(1 for r in rows if r.get("hit_at_k"))
+    mrr = sum(_reciprocal_rank(r.get("hit_rank", -1)) for r in rows) / n
+    return {
+        "queries": n,
+        "hit_rate": hit / n,
+        "mrr": mrr,
+    }
+
+
+def bootstrap_metrics(rows, B=500):
+    n = len(rows)
+    samples = []
+    for _ in range(B):
+        samp = [rows[random.randrange(n)] for _ in range(n)]
+        samples.append(compute_metrics_from_rows(samp))
+
+    def ci(vals):
+        vals = sorted(vals)
+        lo = vals[int(0.025 * B)]
+        hi = vals[int(0.975 * B)]
+        return (lo, hi)
+    hit_vals = [s["hit_rate"] for s in samples]
+    mrr_vals = [s["mrr"] for s in samples]
+    return {
+        "hit_mean": sum(hit_vals) / B, "hit_ci": ci(hit_vals),
+        "mrr_mean": sum(mrr_vals) / B, "mrr_ci": ci(mrr_vals),
+    }

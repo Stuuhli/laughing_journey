@@ -1,6 +1,7 @@
 from utils import (
     get_models_from_user, get_k_values_from_user, get_query_count_from_user,
-    TRUE_QUERIES, FALSE_QUERIES, GROUND_TRUTHS, EMBEDDING_MODELS, run_benchmark
+    TRUE_QUERIES, FALSE_QUERIES, GROUND_TRUTHS, EMBEDDING_MODELS, run_benchmark,
+    get_context_mode_from_user
 )
 from rich.console import Console
 
@@ -19,13 +20,10 @@ if __name__ == "__main__":
         print("[INFO] No queries selected. Benchmark will stop.")
         exit()
 
+    use_full_chapters = get_context_mode_from_user()
     print(f"Models: {models_to_run}\n")
     print(f"k-values: {k_values_to_run}\n")
     print(f"Number of queries: {len(queries_to_run)} ({len(selected_true_q)} true, {len(selected_false_q)} false)")
+    print(f"Context mode: {'Small-to-Big' if use_full_chapters else 'Top-K only'}\n")
 
-    run_benchmark(
-        models=models_to_run,
-        k_values=k_values_to_run,
-        queries=queries_to_run,
-        ground_truths=GROUND_TRUTHS
-    )
+    run_benchmark(models=models_to_run, k_values=k_values_to_run, queries=queries_to_run, ground_truths=GROUND_TRUTHS, use_full_chapters=use_full_chapters)
