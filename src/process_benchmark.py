@@ -52,7 +52,7 @@ def get_benchmarks() -> str:
 def analyze_benchmark(benchmark_dir: str):
     csv_file = Path(benchmark_dir) / "benchmark_results.csv"
 
-    print(f"nLese Daten aus {csv_file}")
+    print(f"\nLese Daten aus {csv_file}")
     df = pd.read_csv(csv_file)
 
     unique_k_vals = sorted(df['k'].unique())
