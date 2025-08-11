@@ -12,6 +12,15 @@ from utils import CHUNKS_DIR, CHROMA_DIR, get_embedding_object, get_chunk_dir_fo
 
 
 def get_vector_store(embedding_model_name: str, persist: bool = True):
+    """Create or load a Chroma vector store for an embedding model.
+
+    Args:
+        embedding_model_name (str): Name of the embedding model.
+        persist (bool, optional): Persist data on disk if True. Defaults to True.
+
+    Returns:
+        Chroma: Vector store instance.
+    """
     embeddings = get_embedding_object(embedding_model_name)
     model_dir = f"{CHROMA_DIR}/chroma__{embedding_model_name.replace(':', '-').replace('/', '-')}"
     persist_dir = model_dir if persist else None
@@ -24,11 +33,32 @@ def get_vector_store(embedding_model_name: str, persist: bool = True):
 
 
 def add_documents(documents, ids, vector_store):
+    """Add new documents to the vector store.
+
+    Args:
+        documents (List[Document]): Documents to add.
+        ids (List[str]): Corresponding document IDs.
+        vector_store (Chroma): Target vector store.
+
+    Returns:
+        None
+    """
     vector_store.add_documents(documents=documents, ids=ids)
     print(f"[SUCCESS] Added {len(documents)} new documents")
 
 
 def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc_path=None):
+    """Update the Chroma database with chunks from JSON files.
+
+    Args:
+        embedding_model_name (str): Embedding model name.
+        update (bool, optional): Delete existing entries before adding new ones. Defaults to False.
+        filename (str, optional): Specific chunk file to process.
+        doc_path (str, optional): Path to a document whose chunks should be updated.
+
+    Returns:
+        None
+    """
     vector_store = get_vector_store(embedding_model_name, persist=True)
     chunk_dir = get_chunk_dir_for_model(embedding_model_name)
     if doc_path:
@@ -77,6 +107,12 @@ def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc
 
 
 def delete_chroma_entry(chroma_id: str, embedding_model_name: str):
+    """Delete a single entry from the Chroma database.
+
+    Args:
+        chroma_id (str): ID of the entry to remove.
+        embedding_model_name (str): Embedding model name.
+    """
     vector_store = get_vector_store(embedding_model_name, persist=True)
     print(f"[INFO] Delete chroma entry with ID: {chroma_id}")
     try:
@@ -87,13 +123,16 @@ def delete_chroma_entry(chroma_id: str, embedding_model_name: str):
 
 
 def create_chroma_db(embedding_model_name: str, doc_path=None):
+    """Recreate the Chroma database for a specific model."""
     print("[INFO] Recreate Chroma-DB...")
     update_chroma_db(embedding_model_name=embedding_model_name, update=True, doc_path=doc_path)
 
 
 def do_a_sim_search(query: str, k: int, vector_store: Chroma):
+    """Perform a similarity search using a query string."""
     return vector_store.similarity_search(query, k=k)
 
 
 def do_a_sim_search_with_embedding(embedding: List[float], k: int, vector_store: Chroma):
+    """Perform a similarity search using a precomputed embedding."""
     return vector_store.similarity_search_by_vector(embedding=embedding, k=k)

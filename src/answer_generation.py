@@ -15,6 +15,14 @@ console = Console()
 
 
 def _key(doc):
+    """Create a stable identifier for a document based on metadata.
+
+    Args:
+        doc: Document object returned from the vector store.
+
+    Returns:
+        tuple: Source file and chapter path.
+    """
     meta = doc.metadata
     return (
         meta.get("source_file", "Unknown file"),
@@ -30,9 +38,18 @@ def generate_answer(
     embedding_model_name: str,
     use_full_chapters: bool = True,  # Toggle für Kontextmodus
 ):
-    """
-    Standardmodus: Similarity Search (RAG über Chroma)
-    Baut IDs [n] stabil über (source_file, chapter_path).
+    """Generate an answer using similarity search over the vector store.
+
+    Args:
+        model (str): Generation model to use.
+        query (str): User question.
+        k_values (int): Number of documents to retrieve.
+        vector_store (Chroma): Vector store for similarity search.
+        embedding_model_name (str): Name of the embedding model.
+        use_full_chapters (bool, optional): Expand context to full chapters. Defaults to True.
+
+    Returns:
+        str: Final LLM response including source list.
     """
     start = time.time()
 
@@ -120,11 +137,16 @@ def generate_answer_compare_docs(
     selected_docx_paths,
     embedding_model_name: str,
 ):
-    """
-    Vergleichsmodus: Mehrere vollständige Dokumente als Kontext.
-    - Nutzt vorhandene Chunks je Dokument (per source_file == *.txt), sonst Fallback auf CONVERTED_DIR.
-    - Docling-Konvertierung wird bei Bedarf automatisch ausgeführt.
-    - Liefert Inline-Quellen [1], [2], … plus Quellenliste.
+    """Generate an answer by comparing multiple complete documents.
+
+    Args:
+        model (str): Generation model to use.
+        query (str): User question.
+        selected_docx_paths: Paths to the documents that should be compared.
+        embedding_model_name (str): Embedding model used for chunk retrieval.
+
+    Returns:
+        str: LLM response including source list.
     """
     start = time.time()
 

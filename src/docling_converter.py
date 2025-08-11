@@ -5,8 +5,14 @@ from utils import DOCX_DIR, CONVERTED_DIR
 
 
 def convert_all_docx(update=False, doc_path=None):
-    """
-    Converts all .docx files to Markdown. Optional: Single document or update mode.
+    """Convert DOCX files to markdown text files.
+
+    Args:
+        update (bool, optional): Overwrite existing conversions. Defaults to False.
+        doc_path (Path or str, optional): Specific document to convert. Processes all if ``None``.
+
+    Returns:
+        None
     """
     CONVERTED_DIR.mkdir(exist_ok=True)
 

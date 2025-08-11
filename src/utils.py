@@ -162,6 +162,15 @@ mistral:latest:     32768
 
 
 def is_relevant_chunk(chunk_text, ground_truth):
+    """Determine if a chunk contains the expected ground truth string.
+
+    Args:
+        chunk_text (str): Text of the chunk being inspected.
+        ground_truth (str): String that should appear within the chunk.
+
+    Returns:
+        bool: True if the ground truth is found in the chunk.
+    """
     return ground_truth.lower() in chunk_text.lower()
 
 
@@ -241,6 +250,15 @@ def generic_let_user_choose(
 
 
 def get_models_from_user(available_models: List[str], test_mode: bool = False) -> List[str]:
+    """Prompt the user to select one or more embedding models.
+
+    Args:
+        available_models (List[str]): Models the user can choose from.
+        test_mode (bool, optional): Allow multiple selections when True. Defaults to False.
+
+    Returns:
+        List[str]: The chosen model names.
+    """
     return generic_let_user_choose(
         prompt="1. Select model(s) by number (e.g. 1,3):" if test_mode else "1. Choose one model by number (e.g. 1):",
         options=available_models,
@@ -249,7 +267,16 @@ def get_models_from_user(available_models: List[str], test_mode: bool = False) -
 
 
 def get_k_values_from_user(test_mode: bool = False) -> List[int]:
-    # Validierungsfunktion für k-Werte
+    """Ask the user for one or more ``k`` values.
+
+    Args:
+        test_mode (bool, optional): Allow multiple selections when True. Defaults to False.
+
+    Returns:
+        List[int]: The selected ``k`` values.
+    """
+
+    # Validation function for k values
     def validate_k_value(val: str) -> bool:
         if val.isdigit() and int(val) > 0:
             return True
@@ -265,10 +292,23 @@ def get_k_values_from_user(test_mode: bool = False) -> List[int]:
 
 
 def get_query_count_from_user(query_list: List[str], query_type_name: str) -> List[str]:
-    max_count = len(query_list)
-    prompt = f"3.1 How many '{query_type_name}' queries should be tested? (max: {max_count})" if query_type_name == 'true' else f"3.2 How many '{query_type_name}' queries should be tested? (max: {max_count})"
+    """Select how many queries of a certain type to use.
 
-    # Validierungsfunktion für die Anzahl der Queries
+    Args:
+        query_list (List[str]): Available queries.
+        query_type_name (str): Label for the query type (e.g., ``"true"`` or ``"false"``).
+
+    Returns:
+        List[str]: A subset of ``query_list`` with the desired length.
+    """
+    max_count = len(query_list)
+    prompt = (
+        f"3.1 How many '{query_type_name}' queries should be tested? (max: {max_count})"
+        if query_type_name == 'true'
+        else f"3.2 How many '{query_type_name}' queries should be tested? (max: {max_count})"
+    )
+
+    # Validation function for the number of queries
     def validate_query_count(val: str) -> bool:
         try:
             count = int(val)
@@ -280,12 +320,19 @@ def get_query_count_from_user(query_list: List[str], query_type_name: str) -> Li
             print("[ERROR] Invalid input. Please enter a whole natural number.")
             return False
 
-    count_str = generic_let_user_choose(prompt=prompt, allow_multiple=False, validate_func=validate_query_count)[0]
+    count_str = generic_let_user_choose(
+        prompt=prompt, allow_multiple=False, validate_func=validate_query_count
+    )[0]
     count = int(count_str)
     return query_list[:count]
 
 
 def get_search_method_from_user():
+    """Ask the user which search method to use.
+
+    Returns:
+        str: ``"normal"`` or ``"hyde"`` depending on the selection.
+    """
     options = ["Normal search (original query)", "HyDE-search (hypothetical document embedding)"]
     choice = generic_let_user_choose(
         prompt="Which search method should be used?",
@@ -296,6 +343,14 @@ def get_search_method_from_user():
 
 
 def load_chunks(chunk_dir=None) -> List[Dict[str, Any]]:
+    """Load chunk data from JSON files in a directory.
+
+    Args:
+        chunk_dir (Path, optional): Directory containing chunk files. Defaults to ``CHUNKS_DIR``.
+
+    Returns:
+        List[Dict[str, Any]]: List of chunk dictionaries.
+    """
     if chunk_dir is None:
         chunk_dir = CHUNKS_DIR
     chunk_files = [f for f in Path(chunk_dir).glob("*.json")]
@@ -314,16 +369,31 @@ def load_chunks(chunk_dir=None) -> List[Dict[str, Any]]:
                     max_length_file = chunk['metadata']['source_file']
                     max_length_chunk_id = chunk['metadata']['chunk_id']
     if chunks:
-        print(f"\n[INFO] Maximum chunk size (character): {max_length} for file {max_length_file} and chunk id {max_length_chunk_id}")
+        print(
+            f"\n[INFO] Maximum chunk size (character): {max_length} for file {max_length_file} and chunk id {max_length_chunk_id}"
+        )
     return chunks
 
 
 def get_embedding_object(model_name: str):
+    """Instantiate an embedding object for a given model name.
+
+    Args:
+        model_name (str): Name of the embedding model.
+
+    Returns:
+        OllamaEmbeddings: Embedding model instance.
+    """
     num_ctx = EMBEDDING_MAX_LENGTHS[model_name]
     return OllamaEmbeddings(model=model_name, num_ctx=num_ctx)
 
 
 def get_context_mode_from_user() -> bool:
+    """Choose between the small-to-big and top-k context strategies.
+
+    Returns:
+        bool: True for small-to-big mode, False for top-k only.
+    """
     options = [
         "Small-to-Big (volle Kapitel aus Treffern laden)",
         "Nur Top-K direkte Treffer verwenden"
@@ -337,6 +407,18 @@ def get_context_mode_from_user() -> bool:
 
 
 def run_benchmark(models: List[str], k_values: List[int], queries: List[str], ground_truths: Dict[str, str], use_full_chapters: bool = True):
+    """Run the retrieval benchmark for a set of models and queries.
+
+    Args:
+        models (List[str]): Embedding models to evaluate.
+        k_values (List[int]): Values of ``k`` to test.
+        queries (List[str]): Queries to execute.
+        ground_truths (Dict[str, str]): Mapping of queries to expected text snippets.
+        use_full_chapters (bool, optional): Use chapter context instead of top-k chunks. Defaults to True.
+
+    Returns:
+        None
+    """
     chunks = load_chunks()
     RESULTS_DIR.mkdir(exist_ok=True, parents=True)
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
@@ -367,7 +449,7 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
                 hit_found, hit_rank, score, doc_title, content = False, -1, None, None, None
 
                 if use_full_chapters:
-                    # Falls Kapitel-Modus, alle Chunks aus Kapitel holen
+                    # Retrieve all chunks belonging to the chapter of the first hit
                     if res:
                         first_doc = res[0][0]
                         chapter_id = first_doc.metadata.get("chapter_path")
@@ -382,14 +464,13 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
                             content = first_doc.page_content
                         doc_title = first_doc.metadata.get("source_file", "N/A")
 
-                        # Trefferprüfung im Kapitel
                         if ground_truth and any(is_relevant_chunk(c, ground_truth) for c in chapter_chunks):
                             hit_found = True
                             hit_rank = 1
                             score = res[0][1]
 
                 else:
-                    # Normal: nur Top-K Chunks prüfen
+                    # Normal mode: check only the returned top-k chunks
                     for idx, (doc, score_val) in enumerate(res, 1):
                         if ground_truth and is_relevant_chunk(doc.page_content, ground_truth):
                             hit_found = True
@@ -429,10 +510,8 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Finished: {model} in {model_time:.2f} seconds")
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] [MODEL] Models completed so far: {[m[0] for m in finished_models]}")
 
-    # Ergebnisse speichern
     overall_time = time.time() - overall_start
     df = pd.DataFrame(results)
-    # Summaries je (embedding_model, k) erzeugen
     summary_rows = []
     for (model, k), sub in df.groupby(["embedding_model", "k"]):
         rows = sub[["hit_at_k", "hit_rank"]].to_dict(orient="records")
@@ -450,7 +529,11 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
             "mrr_ci_low": boot["mrr_ci"][0],
             "mrr_ci_high": boot["mrr_ci"][1],
         })
-    results_subdir = RESULTS_DIR / f"{timestamp}__{len(models)}-models" if len(models) != len(EMBEDDING_MODELS) else RESULTS_DIR / f"{timestamp}-all-models"
+    results_subdir = (
+        RESULTS_DIR / f"{timestamp}__{len(models)}-models"
+        if len(models) != len(EMBEDDING_MODELS)
+        else RESULTS_DIR / f"{timestamp}-all-models"
+    )
     results_subdir.mkdir(exist_ok=True, parents=True)
     summary = pd.DataFrame(summary_rows)
     summary.to_csv(results_subdir / "benchmark_summary.csv", index=False)
@@ -465,7 +548,7 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
         "k_values": k_values,
         "num_queries": len(queries),
         "use_full_chapters": use_full_chapters,
-        "retrieval_mode": "small_to_big" if use_full_chapters else "topk_only"
+        "retrieval_mode": "small_to_big" if use_full_chapters else "topk_only",
     }
     with open(results_subdir / "config.json", 'w', encoding='utf-8') as f:
         json.dump(run_config, f, indent=4)
@@ -477,23 +560,55 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
 
 
 def sliding_window_chunk(text, max_length, stride=0.2):
-    """Teile Text mit Sliding Window in überlappende Chunks."""
+    """Split text into overlapping chunks using a sliding window.
+
+    Args:
+        text (str): The input text.
+        max_length (int): Maximum length of each chunk.
+        stride (float, optional): Overlap ratio between chunks. Defaults to 0.2.
+
+    Returns:
+        list: Generated text chunks.
+    """
     window = max_length
     step = int(window * (1 - stride))
     return [text[i:i + window] for i in range(0, max(len(text) - window + 1, 1), step)]
 
 
 def get_chunk_dir_for_model(model_name: str):
+    """Return the directory path for chunks of a specific model.
+
+    Args:
+        model_name (str): Embedding model name.
+
+    Returns:
+        Path: Path to the model's chunk directory.
+    """
     safe_name = model_name.replace(":", "-").replace("/", "-")
     return Path(__file__).parent.parent / "data" / "chunks" / f"chunks__{safe_name}"
 
 
 def _reciprocal_rank(rank: int) -> float:
+    """Calculate the reciprocal rank for a given position.
+
+    Args:
+        rank (int): Rank of the first relevant document.
+
+    Returns:
+        float: Reciprocal rank value.
+    """
     return 1.0 / rank if rank > 0 else 0.0
 
 
 def compute_metrics_from_rows(rows):
-    # rows: Liste von dicts mit Feldern: hit_at_k(bool), hit_rank(int)
+    """Compute hit rate and mean reciprocal rank from result rows.
+
+    Args:
+        rows (List[dict]): Rows containing ``hit_at_k`` and ``hit_rank``.
+
+    Returns:
+        dict: Metrics including query count, hit rate and MRR.
+    """
     n = len(rows) or 1
     hit = sum(1 for r in rows if r.get("hit_at_k"))
     mrr = sum(_reciprocal_rank(r.get("hit_rank", -1)) for r in rows) / n
@@ -505,6 +620,15 @@ def compute_metrics_from_rows(rows):
 
 
 def bootstrap_metrics(rows, B=500):
+    """Bootstrap hit rate and MRR metrics from benchmark rows.
+
+    Args:
+        rows (List[dict]): Result rows with ``hit_at_k`` and ``hit_rank``.
+        B (int, optional): Number of bootstrap samples. Defaults to 500.
+
+    Returns:
+        dict: Mean metrics and confidence intervals.
+    """
     n = len(rows)
     samples = []
     for _ in range(B):
@@ -516,11 +640,14 @@ def bootstrap_metrics(rows, B=500):
         lo = vals[int(0.025 * B)]
         hi = vals[int(0.975 * B)]
         return (lo, hi)
+
     hit_vals = [s["hit_rate"] for s in samples]
     mrr_vals = [s["mrr"] for s in samples]
     return {
-        "hit_mean": sum(hit_vals) / B, "hit_ci": ci(hit_vals),
-        "mrr_mean": sum(mrr_vals) / B, "mrr_ci": ci(mrr_vals),
+        "hit_mean": sum(hit_vals) / B,
+        "hit_ci": ci(hit_vals),
+        "mrr_mean": sum(mrr_vals) / B,
+        "mrr_ci": ci(mrr_vals),
     }
 
 
@@ -529,14 +656,23 @@ def bootstrap_metrics(rows, B=500):
 # =========================
 
 def list_docx_files() -> List[Path]:
+    """List available DOCX files.
+
+    Returns:
+        List[Path]: Sorted list of document paths.
+    """
     DOCX_DIR.mkdir(exist_ok=True, parents=True)
     return sorted(DOCX_DIR.glob("*.docx"))
 
 
 def ensure_converted_text_for_docx(docx_path: Path) -> Path:
-    """
-    Stellt sicher, dass es im CONVERTED_DIR eine .txt-Version gibt.
-    Ruft bei Bedarf docling-Konvertierung für genau dieses Dokument auf.
+    """Ensure a converted text file exists for the given DOCX document.
+
+    Args:
+        docx_path (Path): Path to the source DOCX file.
+
+    Returns:
+        Path: Path to the corresponding text file.
     """
     CONVERTED_DIR.mkdir(exist_ok=True, parents=True)
     txt_name = Path(os.path.splitext(docx_path.name)[0] + ".txt")
@@ -544,8 +680,9 @@ def ensure_converted_text_for_docx(docx_path: Path) -> Path:
     if out_path.exists():
         return out_path
 
-    # Lazy import, um Zyklus zu vermeiden (docling_converter importiert utils)
+    # Lazy import to avoid circular dependency
     from docling_converter import convert_all_docx
+
     print(f"[INFO] Converted text not found for '{docx_path.name}', converting via docling...")
     convert_all_docx(update=False, doc_path=docx_path)
     if not out_path.exists():
@@ -554,9 +691,14 @@ def ensure_converted_text_for_docx(docx_path: Path) -> Path:
 
 
 def load_chunks_for_source(embedding_model_name: str, source_txt_filename: str) -> List[str]:
-    """
-    Lädt alle Chunk-Texte aus dem model-spezifischen CHUNKS-Ordner,
-    deren metadata['source_file'] == source_txt_filename ist.
+    """Load all chunk texts for a specific source file and model.
+
+    Args:
+        embedding_model_name (str): Embedding model name.
+        source_txt_filename (str): Name of the source text file.
+
+    Returns:
+        List[str]: List of chunk contents.
     """
     chunk_dir = get_chunk_dir_for_model(embedding_model_name)
     if not chunk_dir.exists():
@@ -578,13 +720,17 @@ def load_chunks_for_source(embedding_model_name: str, source_txt_filename: str) 
 
 
 def build_compare_context(selected_docx: List[Path], embedding_model_name: str) -> Tuple[str, List[Tuple[int, str]]]:
-    """
-    Baut einen nummerierten Kontext über mehrere vollständige Quellen auf.
-    Präferenz: vorhandene Chunks (model-spezifisch). Fallback: CONVERTED_DIR/.txt (per docling).
+    """Build a numbered context string over multiple sources.
 
-    Return:
-      context_string  – Blöcke "[i] ...", getrennt mit DOC SEP
-      sources_list    – Liste (i, source_file_display)
+    Preference is given to existing chunks for the given model; otherwise the
+    converted full text is used.
+
+    Args:
+        selected_docx (List[Path]): Documents to include.
+        embedding_model_name (str): Model used to locate chunks.
+
+    Returns:
+        Tuple[str, List[Tuple[int, str]]]: Context string and list of source labels.
     """
     parts: List[str] = []
     sources: List[Tuple[int, str]] = []
@@ -592,7 +738,7 @@ def build_compare_context(selected_docx: List[Path], embedding_model_name: str) 
     for i, docx in enumerate(selected_docx, start=1):
         source_txt_filename = Path(os.path.splitext(docx.name)[0] + ".txt").name
 
-        # 1) Versuche Chunks
+        # Try chunks first
         chunk_texts = load_chunks_for_source(embedding_model_name, source_txt_filename)
 
         if chunk_texts:
@@ -601,7 +747,7 @@ def build_compare_context(selected_docx: List[Path], embedding_model_name: str) 
             sources.append((i, f"{source_txt_filename} (Chunks)"))
             continue
 
-        # 2) Fallback: konvertierter Volltext
+        # Fallback: converted full text
         txt_path = ensure_converted_text_for_docx(docx)
         text_content = txt_path.read_text(encoding="utf-8")
         parts.append(f"[{i}] {text_content}")

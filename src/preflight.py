@@ -7,6 +7,7 @@ import shutil
 
 
 def check_and_manage_converted():
+    """Handle converted text files (update, delete or create)."""
     print("\n--- [PRE] Check: Converted documents ---")
     if os.path.exists(CONVERTED_DIR):
         print("Converted directory exists.")
@@ -28,6 +29,7 @@ def check_and_manage_converted():
 
 
 def check_and_manage_chunks():
+    """Manage chunk directories for different embedding models."""
     print("\n--- [PRE] Check: Chunks ---")
     # Finde alle vorhandenen modell-spezifischen Chunk-Ordner
     chunk_base = CHUNKS_DIR.parent
@@ -74,6 +76,7 @@ def check_and_manage_chunks():
 
 
 def check_and_manage_chroma():
+    """Manage local Chroma vector stores."""
     print("\n--- [PRE] Check: Chroma DB ---")
     chroma_base = CHROMA_DIR
 
@@ -116,6 +119,7 @@ def check_and_manage_chroma():
 
 
 def preflight():
+    """Run all preflight checks."""
     print("\n--- [PRE] Starting preflight... ---")
     check_and_manage_converted()
     check_and_manage_chunks()
@@ -124,6 +128,11 @@ def preflight():
 
 
 def run_full_pipeline_for_new_doc(doc_path):
+    """Convert, chunk and index a new document.
+
+    Args:
+        doc_path: Path to the document that should be processed.
+    """
     clean_path = str(doc_path).strip().strip('"')
     print(f"\n--- [PIPELINE] Starting full pipeline for: {clean_path} ---")
     convert_all_docx(doc_path=clean_path)

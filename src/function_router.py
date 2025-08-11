@@ -12,7 +12,17 @@ from utils import list_docx_files
 
 @tool
 def semantic_search_tool(query: str, model: str, k: int, embedding_model_name: str) -> str:
-    """Answer a question by performing semantic search over indexed documents."""
+    """Answer a question by performing semantic search over indexed documents.
+
+    Args:
+        query (str): User question.
+        model (str): Generation model to use.
+        k (int): Number of chunks to retrieve.
+        embedding_model_name (str): Embedding model for the vector store.
+
+    Returns:
+        str: LLM response with sources.
+    """
     vector_store = get_vector_store(embedding_model_name=embedding_model_name, persist=True)
     return generate_answer(
         model=model,
@@ -27,16 +37,14 @@ def semantic_search_tool(query: str, model: str, k: int, embedding_model_name: s
 def document_context_tool(query: str, model: str, documents: List[str], embedding_model_name: str) -> str:
     """Use complete documents as context to answer the question.
 
-    Parameters
-    ----------
-    query : str
-        The user question.
-    model : str
-        Generation model to use.
-    documents : List[str]
-        List of document names to load. If empty, all available documents are used.
-    embedding_model_name : str
-        Name of the embedding model for chunk retrieval.
+    Args:
+        query (str): User question.
+        model (str): Generation model to use.
+        documents (List[str]): Document names to include; all are used if empty.
+        embedding_model_name (str): Embedding model for chunk retrieval.
+
+    Returns:
+        str: LLM response with sources.
     """
     available_docs = list_docx_files()
     selected = []
@@ -56,7 +64,17 @@ def document_context_tool(query: str, model: str, documents: List[str], embeddin
 
 
 def answer_query_with_tools(query: str, model: str, embedding_model_name: str, k: int = 5) -> str:
-    """Route the query through an LLM with function calling support."""
+    """Route the query through an LLM with function-calling support.
+
+    Args:
+        query (str): User question.
+        model (str): Generation model to use.
+        embedding_model_name (str): Embedding model for retrieval.
+        k (int, optional): Number of chunks for semantic search. Defaults to 5.
+
+    Returns:
+        str: LLM answer either directly or via a tool.
+    """
     tools = [semantic_search_tool, document_context_tool]
     llm = ChatOllama(model=model, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
