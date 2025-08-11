@@ -1,7 +1,7 @@
 """Automatic routing between semantic search and document analysis using LangChain tools."""
 from typing import List
 
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage
 
@@ -58,7 +58,7 @@ def document_context_tool(query: str, model: str, documents: List[str], embeddin
 def answer_query_with_tools(query: str, model: str, embedding_model_name: str, k: int = 5) -> str:
     """Route the query through an LLM with function calling support."""
     tools = [semantic_search_tool, document_context_tool]
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    llm = ChatOllama(model=model, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
     ai_message = llm_with_tools.invoke([HumanMessage(query)])
     if ai_message.tool_calls:
