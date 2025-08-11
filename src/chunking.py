@@ -4,7 +4,6 @@ import json
 import re
 import hashlib
 from utils import sliding_window_chunk, CHUNKS_DIR
-# from tokenization import tokenize_and_chunk
 
 PROJECT_DIR = Path(__file__).parent.parent
 INPUT_PATH = PROJECT_DIR / "data" / "converted"
