@@ -35,7 +35,7 @@ def main():
 
             while True:
                 try:
-                    query = input("🔍 Enter your query ('q' to quit): ").strip()
+                    query = input("\n🔍 Enter your query ('q' to quit): ").strip()
                     if not query or query.lower() == 'q':
                         print("[INFO] Program aborted")
                         break

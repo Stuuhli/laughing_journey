@@ -1,5 +1,5 @@
 """Automatic routing between semantic search and document analysis using LangChain tools."""
-from typing import List
+from typing import List, Optional
 
 from langchain_ollama import ChatOllama
 from langchain.tools import tool
@@ -10,19 +10,16 @@ from vector_db import get_vector_store
 from utils import list_docx_files
 
 
-@tool
+@tool(
+    "semantic_search_tool",
+    description=(
+        "Perform semantic search over indexed document chunks. "
+        "Use this when the question can be answered by retrieving "
+        "specific passages from the corpus."
+    ),
+)
 def semantic_search_tool(query: str, model: str, k: int, embedding_model_name: str) -> str:
-    """Answer a question by performing semantic search over indexed documents.
-
-    Args:
-        query (str): User question.
-        model (str): Generation model to use.
-        k (int): Number of chunks to retrieve.
-        embedding_model_name (str): Embedding model for the vector store.
-
-    Returns:
-        str: LLM response with sources.
-    """
+    """Answer a question by performing semantic search over indexed documents."""
     vector_store = get_vector_store(embedding_model_name=embedding_model_name, persist=True)
     return generate_answer(
         model=model,
@@ -33,18 +30,34 @@ def semantic_search_tool(query: str, model: str, k: int, embedding_model_name: s
     )
 
 
-@tool
-def document_context_tool(query: str, model: str, documents: List[str], embedding_model_name: str) -> str:
+@tool(
+    "document_context_tool",
+    description=(
+        "Load whole documents and supply them as context for the answer. "
+        "Use this when the query requires analysing an entire document or "
+        "comparing multiple documents, for example compliance checks. "
+        "Optional parameter 'documents' accepts a list of document names; "
+        "leave empty to use all available documents."
+    ),
+)
+def document_context_tool(
+    query: str,
+    model: str,
+    embedding_model_name: str,
+    documents: Optional[List[str]] = None,
+) -> str:
     """Use complete documents as context to answer the question.
 
-    Args:
-        query (str): User question.
-        model (str): Generation model to use.
-        documents (List[str]): Document names to include; all are used if empty.
-        embedding_model_name (str): Embedding model for chunk retrieval.
-
-    Returns:
-        str: LLM response with sources.
+    Parameters
+    ----------
+    query : str
+        The user question.
+    model : str
+        Generation model to use.
+    embedding_model_name : str
+        Name of the embedding model for chunk retrieval.
+    documents : List[str]
+        List of document names to load. If empty, all available documents are used.
     """
     available_docs = list_docx_files()
     selected = []
@@ -64,17 +77,7 @@ def document_context_tool(query: str, model: str, documents: List[str], embeddin
 
 
 def answer_query_with_tools(query: str, model: str, embedding_model_name: str, k: int = 5) -> str:
-    """Route the query through an LLM with function-calling support.
-
-    Args:
-        query (str): User question.
-        model (str): Generation model to use.
-        embedding_model_name (str): Embedding model for retrieval.
-        k (int, optional): Number of chunks for semantic search. Defaults to 5.
-
-    Returns:
-        str: LLM answer either directly or via a tool.
-    """
+    """Route the query through an LLM with function calling support."""
     tools = [semantic_search_tool, document_context_tool]
     llm = ChatOllama(model=model, temperature=0)
     llm_with_tools = llm.bind_tools(tools)
