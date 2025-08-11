@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import json
 from pathlib import Path
 import pandas as pd
@@ -9,6 +9,7 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 import random
+import os
 
 # --- Konstanten bleiben unverändert ---
 PROJECT_DIR = Path(__file__).parent.parent
@@ -18,15 +19,16 @@ CHUNKS_DIR = PROJECT_DIR / "data" / "chunks"
 RESULTS_DIR = PROJECT_DIR / "data" / "results"
 CHROMA_DIR = PROJECT_DIR / "data" / "chroma"
 
+
 PROMPT_TEMPLATE = """
 Du bist ein präziser und hilfreicher Assistent in einem RAG-System.
-Antworte auf die Frage des Benutzers ausschließlich auf Basis des folgenden Kontexts.
-Jeder Kontextabschnitt beinhaltet auch Metadaten, auf die du dich beziehen sollst.
+Antworte ausschließlich auf Basis des folgenden Kontexts.
 
-Deine Aufgaben:
-1.  Formuliere eine präzise Antwort auf die Frage.
-2.  Wenn die benötigten Fakten für deine Antwort im Kontext nicht enthalten ist, sage klar und deutlich, dass du keine Antwort finden konntest. Erfinde nichts. Bleibe immer bei dem Kontext.
-3.  Erwähne stets, dass sich deine Informationen nur auf den gefundenen Kontext beziehen und weitere Informationen fehlen könnten.
+Jeder Kontextblock beginnt mit einer Quellnummer in eckigen Klammern, z. B. [1], [2].
+Verweise in deiner Antwort **direkt im Fließtext** an den relevanten Stellen auf diese Quellnummern
+(z. B. „… gemäß [1] …“, „… siehe [2][3] …“). Nutze nur die vorhandenen Quellnummern, erfinde keine.
+
+Wenn die Information im Kontext fehlt, sage das explizit.
 
 Kontext:
 {context}
@@ -34,8 +36,28 @@ Kontext:
 Frage:
 {query}
 
-Antwort:
+Antwort (mit Quellenangaben im Text):
 """
+
+# Spezieller Prompt für den Vergleichsmodus (Inkonsistenzen etc.)
+PROMPT_TEMPLATE_COMPARE = """
+Du vergleichst mehrere vollständige Dokumente inhaltlich. Der gesamte Kontext folgt in nummerierten Blöcken [1], [2], ...
+
+Aufgaben:
+1) Beantworte die Frage **präzise** ausschließlich auf Basis des Kontexts.
+2) Führe eine **Konsistenzprüfung** durch: identifiziere Widersprüche, fehlende Anforderungen, divergierende Definitionen, Versionskonflikte, unterschiedliche Verantwortlichkeiten.
+3) Verweise im Fließtext stets auf die Quellnummern [n] an den relevanten Stellen.
+4) Wenn Angaben fehlen oder zwischen Quellen variieren, formuliere **konkrete Klärungsfragen**.
+
+Kontext (nummerierte Quellenblöcke):
+{context}
+
+Frage:
+{query}
+
+Antwort (mit Quellenangaben im Text):
+"""
+
 
 TRUE_QUERIES = [
     "Was sind Ziele der Informationssicherheit?",  # Leit
@@ -283,7 +305,6 @@ def load_chunks(chunk_dir=None) -> List[Dict[str, Any]]:
     max_length_chunk_id = ""
     for cf in chunk_files:
         with open(cf, "r", encoding="utf-8") as f:
-            # chunks.extend(json.load(f))
             file_chunks = json.load(f)
             chunks.extend(file_chunks)
             for chunk in file_chunks:
@@ -293,7 +314,7 @@ def load_chunks(chunk_dir=None) -> List[Dict[str, Any]]:
                     max_length_file = chunk['metadata']['source_file']
                     max_length_chunk_id = chunk['metadata']['chunk_id']
     if chunks:
-        print(f"\n[INFO] Maximale Chunk-Größe (Zeichen): {max_length} for file {max_length_file} and chunk id {max_length_chunk_id}")
+        print(f"\n[INFO] Maximum chunk size (character): {max_length} for file {max_length_file} and chunk id {max_length_chunk_id}")
     return chunks
 
 
@@ -386,7 +407,7 @@ def run_benchmark(models: List[str], k_values: List[int], queries: List[str], gr
                         score = score_val
                     else:
                         doc_title = "N/A"
-                        content = "Ground truth could not be retrieved from chunks"
+                        content = "Ground truth could not be found"
                         score = None
 
                 results.append({
@@ -501,3 +522,90 @@ def bootstrap_metrics(rows, B=500):
         "hit_mean": sum(hit_vals) / B, "hit_ci": ci(hit_vals),
         "mrr_mean": sum(mrr_vals) / B, "mrr_ci": ci(mrr_vals),
     }
+
+
+# =========================
+#   Vergleichen: Helpers
+# =========================
+
+def list_docx_files() -> List[Path]:
+    DOCX_DIR.mkdir(exist_ok=True, parents=True)
+    return sorted(DOCX_DIR.glob("*.docx"))
+
+
+def ensure_converted_text_for_docx(docx_path: Path) -> Path:
+    """
+    Stellt sicher, dass es im CONVERTED_DIR eine .txt-Version gibt.
+    Ruft bei Bedarf docling-Konvertierung für genau dieses Dokument auf.
+    """
+    CONVERTED_DIR.mkdir(exist_ok=True, parents=True)
+    txt_name = Path(os.path.splitext(docx_path.name)[0] + ".txt")
+    out_path = CONVERTED_DIR / txt_name
+    if out_path.exists():
+        return out_path
+
+    # Lazy import, um Zyklus zu vermeiden (docling_converter importiert utils)
+    from docling_converter import convert_all_docx
+    print(f"[INFO] Converted text not found for '{docx_path.name}', converting via docling...")
+    convert_all_docx(update=False, doc_path=docx_path)
+    if not out_path.exists():
+        raise FileNotFoundError(f"[ERROR] Docling conversion did not produce: {out_path}")
+    return out_path
+
+
+def load_chunks_for_source(embedding_model_name: str, source_txt_filename: str) -> List[str]:
+    """
+    Lädt alle Chunk-Texte aus dem model-spezifischen CHUNKS-Ordner,
+    deren metadata['source_file'] == source_txt_filename ist.
+    """
+    chunk_dir = get_chunk_dir_for_model(embedding_model_name)
+    if not chunk_dir.exists():
+        return []
+
+    contents: List[str] = []
+    for jf in chunk_dir.glob("*.json"):
+        try:
+            with open(jf, "r", encoding="utf-8") as f:
+                items = json.load(f)
+            for it in items:
+                meta = it.get("metadata", {})
+                if meta.get("source_file") == source_txt_filename:
+                    contents.append(it.get("page_content", ""))
+        except Exception as e:
+            print(f"[WARN] Could not read chunks from {jf}: {e}")
+            continue
+    return contents
+
+
+def build_compare_context(selected_docx: List[Path], embedding_model_name: str) -> Tuple[str, List[Tuple[int, str]]]:
+    """
+    Baut einen nummerierten Kontext über mehrere vollständige Quellen auf.
+    Präferenz: vorhandene Chunks (model-spezifisch). Fallback: CONVERTED_DIR/.txt (per docling).
+
+    Return:
+      context_string  – Blöcke "[i] ...", getrennt mit DOC SEP
+      sources_list    – Liste (i, source_file_display)
+    """
+    parts: List[str] = []
+    sources: List[Tuple[int, str]] = []
+
+    for i, docx in enumerate(selected_docx, start=1):
+        source_txt_filename = Path(os.path.splitext(docx.name)[0] + ".txt").name
+
+        # 1) Versuche Chunks
+        chunk_texts = load_chunks_for_source(embedding_model_name, source_txt_filename)
+
+        if chunk_texts:
+            combined = "\n".join(chunk_texts)
+            parts.append(f"[{i}] {combined}")
+            sources.append((i, f"{source_txt_filename} (Chunks)"))
+            continue
+
+        # 2) Fallback: konvertierter Volltext
+        txt_path = ensure_converted_text_for_docx(docx)
+        text_content = txt_path.read_text(encoding="utf-8")
+        parts.append(f"[{i}] {text_content}")
+        sources.append((i, f"{source_txt_filename} (Converted TXT)"))
+
+    context_string = "\n\n--- DOC SEP ---\n\n".join(parts) if parts else ""
+    return context_string, sources
