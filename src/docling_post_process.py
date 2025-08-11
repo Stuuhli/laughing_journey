@@ -3,19 +3,26 @@ from pathlib import Path
 
 
 def reduce_multiple_spaces(text: str) -> str:
-    """
-    Reduces sequences of 10 or more spaces to exactly 10 spaces.
+    """Reduce sequences of ten or more spaces to exactly ten.
+
+    Args:
+        text (str): Input text.
+
+    Returns:
+        str: Text with collapsed spaces.
     """
     # Regex to find 10 or more spaces and replace with 10 spaces
     return re.sub(r' {10,}', '          ', text)
 
 
 def correct_markdown_numbering(file_path: Path):
-    """
-    Fix the chapter numbers as explained in docling_converter.py
+    """Fix chapter numbering in a markdown file.
 
     Args:
-        file_path (Path): Path to file to be corrected
+        file_path (Path): Path to the file to be corrected.
+
+    Returns:
+        None
     """
     try:
         original_text = file_path.read_text(encoding="utf-8")

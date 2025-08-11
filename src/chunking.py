@@ -13,7 +13,14 @@ HEADER_TYPES = [("##", "Chapter"), ("###", "Sub-Chapter"), ("####", "Sub-Sub-Cha
 
 
 def parse_chapter(header: str):
-    """Extract chapter number and title, e.g. “3.1 Access control” → (“3.1”, “Access control”)"""
+    """Split a chapter header into its numeric prefix and title.
+
+    Args:
+        header (str): Raw chapter header, e.g. ``"3.1 Access control"``.
+
+    Returns:
+        tuple: Chapter number and title if present.
+    """
     if not header:
         return None, None
     m = re.match(r"^([\d.]+)\s*(.*)$", header.strip())
@@ -23,6 +30,14 @@ def parse_chapter(header: str):
 
 
 def chunk_md_headers(text_content: str):
+    """Split markdown text into sections based on header levels.
+
+    Args:
+        text_content (str): Markdown document content.
+
+    Returns:
+        list: Sections produced by ``MarkdownHeaderTextSplitter``.
+    """
     splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=HEADER_TYPES, strip_headers=False
     )
@@ -30,13 +45,30 @@ def chunk_md_headers(text_content: str):
 
 
 def get_chunk_id(text: str, meta: dict) -> str:
+    """Create a deterministic hash for a chunk and its metadata.
+
+    Args:
+        text (str): Chunk content.
+        meta (dict): Metadata associated with the chunk.
+
+    Returns:
+        str: SHA256 hash representing the chunk.
+    """
     s = json.dumps(meta, sort_keys=True, ensure_ascii=False) + text
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
 def create_chunks_for_all(update=False, doc_path=None, max_chunk_length=1024, chunk_dir=None):
-    """
-    Creates chunks for all (or a single) converted document(s). Optional: update mode.
+    """Create JSON chunk files for converted documents.
+
+    Args:
+        update (bool, optional): Overwrite existing chunk files. Defaults to False.
+        doc_path (str, optional): Specific document to process. Processes all if ``None``.
+        max_chunk_length (int, optional): Approximate maximum characters per chunk. Defaults to 1024.
+        chunk_dir (Path, optional): Output directory for chunk files. Defaults to ``CHUNKS_DIR``.
+
+    Returns:
+        None
     """
     # the max_chunk_length has to me multiplied by 3.5 to reach the effect of chunk -> token conversion, which is a factor between roughly 4-6
     max_chunk_length = int(max_chunk_length * 3.5)

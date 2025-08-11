@@ -16,7 +16,7 @@ BUTTON_REAL_WIDTH = 64
 
 
 class FadeOutLabel(CTK.CTkLabel):
-    """Ein benutzerdefiniertes Label, das seinen Text und seine Hintergrundfarbe ausblendet."""
+    """Custom label that fades its text and background colors."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields = ('text_color', 'fg_color')

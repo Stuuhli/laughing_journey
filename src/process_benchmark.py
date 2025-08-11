@@ -7,6 +7,14 @@ from datetime import datetime
 
 
 def parse_config(path: Path):
+    """Load the benchmark configuration from a JSON file.
+
+    Args:
+        path (Path): Path to the ``config.json`` file.
+
+    Returns:
+        dict | None: Parsed configuration or ``None`` if the file is missing.
+    """
     # Wer braucht schon exception hanlding???
     if not path.is_file():
         print(f"[ERROR] No config.json found in in {path}")
@@ -18,6 +26,11 @@ def parse_config(path: Path):
 
 
 def get_benchmarks() -> str:
+    """Display available benchmark runs and let the user choose one.
+
+    Returns:
+        str: Path to the selected benchmark directory.
+    """
     runs = []
     for run_name in os.listdir(RESULTS_DIR):
         run_path = RESULTS_DIR / run_name
@@ -26,7 +39,7 @@ def get_benchmarks() -> str:
             config = parse_config(run_path / "config.json")
             if config:
                 runs.append(config)
-    # Newest entries at ther top
+    # Newest entries at the top
     runs.reverse()
 
     for i, run in enumerate(runs):
@@ -50,6 +63,11 @@ def get_benchmarks() -> str:
 
 
 def analyze_benchmark(benchmark_dir: str):
+    """Calculate simple scores for the selected benchmark run.
+
+    Args:
+        benchmark_dir (str): Path to the benchmark directory.
+    """
     csv_file = Path(benchmark_dir) / "benchmark_results.csv"
 
     print(f"\nLese Daten aus {csv_file}")

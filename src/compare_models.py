@@ -5,6 +5,11 @@ from utils import RESULTS_DIR
 
 
 def list_runs():
+    """List all benchmark runs stored in the results directory.
+
+    Returns:
+        List[dict]: Metadata for each valid run.
+    """
     runs = []
     if not RESULTS_DIR.exists():
         return runs
@@ -34,6 +39,15 @@ def list_runs():
 
 
 def pick_run(runs, title):
+    """Prompt the user to select a run from a list.
+
+    Args:
+        runs (List[dict]): Available runs.
+        title (str): Heading shown before the selection.
+
+    Returns:
+        dict: Metadata of the selected run.
+    """
     print(f"\n{title}")
     for i, r in enumerate(runs, 1):
         print(f"[{i}] {r['timestamp']}  full chapters={r['use_full_chapters']}  models={r['models']}  k={r['k_values']}  nQ={r['num_queries']}  -> {r['path'].name}")
@@ -48,6 +62,14 @@ def pick_run(runs, title):
 
 
 def add_rr(df: pd.DataFrame) -> pd.DataFrame:
+    """Add reciprocal rank and boolean hit columns to a DataFrame.
+
+    Args:
+        df (pd.DataFrame): Input data containing `hit_rank` and `hit_at_k`.
+
+    Returns:
+        pd.DataFrame: Updated DataFrame with `rr` and normalized `hit_at_k`.
+    """
     df = df.copy()
     # Robustheit: hit_rank kann float/NaN kommen → erst int-konvertierbar prüfen
 
@@ -63,6 +85,16 @@ def add_rr(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def bootstrap_ci_mean(vals, B=1000, alpha=0.05):
+    """Calculate a bootstrap confidence interval for the mean.
+
+    Args:
+        vals (Iterable[float]): Sample values.
+        B (int, optional): Number of bootstrap samples. Defaults to 1000.
+        alpha (float, optional): Significance level. Defaults to 0.05.
+
+    Returns:
+        Tuple[float, float]: Lower and upper confidence bounds.
+    """
     vals = list(vals)
     n = len(vals)
     if n == 0:
@@ -78,6 +110,11 @@ def bootstrap_ci_mean(vals, B=1000, alpha=0.05):
 
 
 def main():
+    """Interactive CLI for comparing two benchmark runs.
+
+    Returns:
+        None
+    """
     runs = list_runs()
     if len(runs) < 2:
         print("[INFO] Finde weniger als zwei gültige Runs in data/results.")

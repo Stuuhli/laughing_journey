@@ -10,6 +10,7 @@ from function_router import answer_query_with_tools
 
 
 def main():
+    """Entry point for the interactive document and chatbot tool."""
     print("Welcome to the Document and Chatbot Tool!")
     while True:
         print("\n[1] Run preflight check\n[2] Run full pipeline for new document\n[3] Start chatbot\n[q] Quit")
