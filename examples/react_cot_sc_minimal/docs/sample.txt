@@ -1,0 +1,2 @@
+Dies ist ein Beispieldokument, das im Minimalsetup verwendet wird.
+Es enthält einige Informationen über Sicherheitsrichtlinien.
