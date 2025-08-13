@@ -6,7 +6,8 @@ from utils import (
     generic_let_user_choose,
 )
 from preflight import preflight, run_full_pipeline_for_new_doc
-from function_router import answer_query_with_tools
+from answer_generation import generate_answer
+from vector_db import get_vector_store
 
 
 def main():
@@ -42,11 +43,13 @@ def main():
 
                     model_to_run = get_models_from_user(available_models=GENERATION_MODELS)[0]
 
-                    response = answer_query_with_tools(
-                        query=query,
+                    response = generate_answer(
                         model=model_to_run,
+                        query=query,
+                        k_values=k_values,
+                        vector_store=get_vector_store(embedding_model_name=embedding_model_name),
                         embedding_model_name=embedding_model_name,
-                        k=k_values,
+                        use_full_chapters=False,
                     )
 
                     print("LLM Response:")

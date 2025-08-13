@@ -135,6 +135,7 @@ EMBEDDING_MAX_LENGTHS = {
 # TODO: Aktuelle größte Tokenlength etwa 1.000 - 1.300 bei 5182 Zeichen page_context
 
 GENERATION_MODELS = [
+    "deepseek-r1:1.5b",
     "gemma3n:e2b",
     "phi3:3.8b",
     "gemma3n:e4b",
@@ -153,6 +154,7 @@ gemma3:12b:         131072
 granite3.3:8b:      131072
 llama3.1:8b:        131072
 phi3:3.8b:          131072
+deepseek-r1:1.5b:   131072
 qwen3:8b:           40960
 gemma3n:e4b:        32768
 qwen:4b:            32768
