@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Iterable
 import json
 from pathlib import Path
 import pandas as pd
@@ -757,3 +757,26 @@ def build_compare_context(selected_docx: List[Path], embedding_model_name: str) 
 
     context_string = "\n\n--- DOC SEP ---\n\n".join(parts) if parts else ""
     return context_string, sources
+
+
+def stream_to_markdown(stream: Iterable[str], placeholder) -> str:
+    """Render a token stream progressively inside a Streamlit placeholder.
+
+    This utility consumes the incoming text chunks, updates the given
+    placeholder with the accumulated markdown and returns the final string.
+    Keeping the logic in one place avoids subtle differences in how streaming
+    is handled across the code base.
+
+    Args:
+        stream: Iterable yielding pieces of text from an LLM.
+        placeholder: Streamlit placeholder created via ``st.empty()``.
+
+    Returns:
+        str: The concatenated response string.
+    """
+
+    response = ""
+    for chunk in stream:
+        response += chunk
+        placeholder.markdown(response)
+    return response
