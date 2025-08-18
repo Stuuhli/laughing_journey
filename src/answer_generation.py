@@ -30,39 +30,23 @@ def _key(doc):
     )
 
 
-def generate_answer(
-    model: str,
+def _prepare_prompt(
     query: str,
     k_values: int,
     vector_store: Chroma,
     embedding_model_name: str,
-    use_full_chapters: bool = True,  # Toggle für Kontextmodus
+    use_full_chapters: bool,
 ):
-    """Generate an answer using similarity search over the vector store.
+    """Retrieve context and construct prompt and source appendix."""
 
-    Args:
-        model (str): Generation model to use.
-        query (str): User question.
-        k_values (int): Number of documents to retrieve.
-        vector_store (Chroma): Vector store for similarity search.
-        embedding_model_name (str): Name of the embedding model.
-        use_full_chapters (bool, optional): Expand context to full chapters. Defaults to True.
-
-    Returns:
-        str: Final LLM response including source list.
-    """
-    start = time.time()
-
-    # 1) Retrieval
     results = do_a_sim_search(query, k=k_values, vector_store=vector_store)
 
-    # IDs stabil definieren
     unique_keys = []
     for doc in results:
         k = _key(doc)
         if k not in unique_keys:
             unique_keys.append(k)
-    source_id_map = {k: i + 1 for i, k in enumerate(unique_keys)}  # {(source_file, chapter_path): id}
+    source_id_map = {k: i + 1 for i, k in enumerate(unique_keys)}
 
     print("--- Retrieved context ---")
     for idx, res in enumerate(results):
@@ -73,7 +57,6 @@ def generate_answer(
         )
     print("-" * 25)
 
-    # 2) Kontext vorbereiten
     if use_full_chapters:
         found_chapters = {doc.metadata.get("chapter_path") for doc in results if doc.metadata.get("chapter_path")}
         all_chunks = load_chunks(chunk_dir=get_chunk_dir_for_model(embedding_model_name))
@@ -110,26 +93,82 @@ def generate_answer(
 
         context_string = "\n\n--- DOC SEP ---\n\n".join(context_parts)
 
-    # 3) Antwort generieren
-    llm = OllamaLLM(model=model, num_ctx=16384)
     prompt = PROMPT_TEMPLATE.format(context=context_string, query=query)
-    with console.status("[INFO] Request is being processed by the LLM ...", spinner="dots12", spinner_style="white"):
-        raw_response = llm.invoke(prompt)
 
-    final_response_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
-
-    # 4) Quellenverzeichnis
     sources_text = "\n\n---\nQuellen:\n"
     for k in unique_keys[:8]:
         sid = source_id_map[k]
         source_file, chapter_path = k
         sources_text += f"[{sid}] {source_file} – Kapitel: {chapter_path}\n"
 
+    return prompt, sources_text
+
+
+
+def generate_answer(
+    model: str,
+    query: str,
+    k_values: int,
+    vector_store: Chroma,
+    embedding_model_name: str,
+    use_full_chapters: bool = True,
+):
+    """Generate an answer using similarity search over the vector store."""
+
+    start = time.time()
+    prompt, sources_text = _prepare_prompt(
+        query,
+        k_values,
+        vector_store,
+        embedding_model_name,
+        use_full_chapters,
+    )
+
+    llm = OllamaLLM(model=model, num_ctx=16384)
+    with console.status(
+        "[INFO] Request is being processed by the LLM ...",
+        spinner="dots12",
+        spinner_style="white",
+    ):
+        raw_response = llm.invoke(prompt)
+
+    final_response_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
     final_response_text += sources_text
 
     print("Runtime: ", time.time() - start, " Sekunden")
     return final_response_text
 
+
+def generate_answer_stream(
+    model: str,
+    query: str,
+    k_values: int,
+    vector_store: Chroma,
+    embedding_model_name: str,
+    use_full_chapters: bool = True,
+):
+    """Stream an answer token by token."""
+
+    start = time.time()
+    prompt, sources_text = _prepare_prompt(
+        query,
+        k_values,
+        vector_store,
+        embedding_model_name,
+        use_full_chapters,
+    )
+
+    llm = OllamaLLM(model=model, num_ctx=16384)
+    with console.status(
+        "[INFO] Request is being processed by the LLM ...",
+        spinner="dots12",
+        spinner_style="white",
+    ):
+        for chunk in llm.stream(prompt):
+            yield chunk.content if hasattr(chunk, "content") else str(chunk)
+
+    yield sources_text
+    print("Runtime: ", time.time() - start, " Sekunden")
 
 def generate_answer_compare_docs(
     model: str,
