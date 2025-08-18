@@ -8,13 +8,14 @@ from utils import (
 from preflight import preflight, run_full_pipeline_for_new_doc
 from answer_generation import generate_answer
 from vector_db import get_vector_store
+from orchestrator import run_orchestrator
 
 
 def main():
     """Entry point for the interactive document and chatbot tool."""
     print("Welcome to the Document and Chatbot Tool!")
     while True:
-        print("\n[1] Run preflight check\n[2] Run full pipeline for new document\n[3] Start chatbot\n[q] Quit")
+        print("\n[1] Run preflight check\n[2] Run full pipeline for new document\n[3] Start chatbot\n[4] Start agentic chatbot\n[q] Quit")
         choice = input("Selection: ").strip().lower()
         if choice == '1':
             print("Running preflight check...")
@@ -50,6 +51,39 @@ def main():
                         vector_store=get_vector_store(embedding_model_name=embedding_model_name),
                         embedding_model_name=embedding_model_name,
                         use_full_chapters=False,
+                    )
+
+                    print("LLM Response:")
+                    print(response)
+
+                except KeyboardInterrupt:
+                    print("\n[INFO] Program aborted")
+                    break
+        elif choice == '4':
+            print("Chatbot started. Type your query below.")
+
+            embedding_model_name = generic_let_user_choose(
+                prompt="Which embedding model should be used for the search?",
+                options=EMBEDDING_MODELS,
+                allow_multiple=False
+            )[0]
+
+            k_values = get_k_values_from_user()[0]
+
+            while True:
+                try:
+                    query = input("\n🔍 Enter your query ('q' to quit): ").strip()
+                    if not query or query.lower() == 'q':
+                        print("[INFO] Program aborted")
+                        break
+
+                    model_to_run = get_models_from_user(available_models=GENERATION_MODELS)[0]
+
+                    response = run_orchestrator(
+                        user_query=query,
+                        embedding_model=embedding_model_name,
+                        gen_model=model_to_run,
+                        k=k_values
                     )
 
                     print("LLM Response:")
