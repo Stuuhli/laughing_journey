@@ -163,7 +163,10 @@ def generate_answer_stream(
         spinner_style="white",
     ):
         for chunk in llm.stream(prompt):
-            yield chunk.content if hasattr(chunk, "content") else str(chunk)
+            text = getattr(chunk, "content", None)
+            if text is None:
+                text = getattr(chunk, "text", str(chunk))
+            yield text
 
     yield sources_text
     print("Runtime: ", time.time() - start, " Sekunden")
