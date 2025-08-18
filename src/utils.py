@@ -22,7 +22,7 @@ CHROMA_DIR = PROJECT_DIR / "data" / "chroma"
 
 PROMPT_TEMPLATE = """
 Du bist ein präziser und hilfreicher Assistent in einem RAG-System.
-Antworte ausschließlich auf Basis des folgenden Kontexts.
+Antworte ausschließlich auf Basis des folgenden Kontexts. Antworte in Markdown
 
 Jeder Kontextblock beginnt mit einer Quellnummer in eckigen Klammern, z. B. [1], [2].
 Verweise in deiner Antwort **direkt im Fließtext** an den relevanten Stellen auf diese Quellnummern
