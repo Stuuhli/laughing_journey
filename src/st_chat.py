@@ -1,98 +1,62 @@
 import streamlit as st
 from streamlit_chat import message
-from streamlit.components.v1 import html
+
+from answer_generation import generate_answer
+from vector_db import get_vector_store
+
+K = 10
+EMBEDDING_MODEL = "granite-embedding:278m"
+GEN_MODEL = "gemma3n:e4b"
 
 
-def on_input_change():
-    user_input = st.session_state.user_input
-    st.session_state.past.append(user_input)
-    st.session_state.generated.append("The messages from Bot\nWith new line")
-
-
-def on_btn_click():
-    del st.session_state.past[:]
-    del st.session_state.generated[:]
-
-audio_path = "https://docs.google.com/uc?export=open&id=16QSvoLWNxeqco_Wb2JvzaReSAw5ow6Cl"
-img_path = "https://www.groundzeroweb.com/wp-content/uploads/2017/05/Funny-Cat-Memes-11.jpg"
-youtube_embed = '''
-<iframe width="400" height="215" src="https://www.youtube.com/embed/LMQ5Gauy17k" title="YouTube video player" frameborder="0" allow="accelerometer; encrypted-media;"></iframe>
-'''
-
-markdown = """
-### HTML in markdown is ~quite~ **unsafe**
-<blockquote>
-  However, if you are in a trusted environment (you trust the markdown). You can use allow_html props to enable support for html.
-</blockquote>
-
-* Lists
-* [ ] todo
-* [x] done
-
-Math:
-
-Lift($L$) can be determined by Lift Coefficient ($C_L$) like the following
-equation.
-
-$$
-L = \\frac{1}{2} \\rho v^2 S C_L
-$$
-
-~~~py
-import streamlit as st
-
-st.write("Python code block")
-~~~
-
-~~~js
-console.log("Here is some JavaScript code")
-~~~
-
-"""
-
-table_markdown = '''
-A Table:
-
-| Feature     | Support              |
-| ----------: | :------------------- |
-| CommonMark  | 100%                 |
-| GFM         | 100% w/ `remark-gfm` |
-'''
-
-st.session_state.setdefault(
-    'past', 
-    ['plan text with line break',
-     'play the song "Dancing Vegetables"', 
-     'show me image of cat', 
-     'and video of it',
-     'show me some markdown sample',
-     'table in markdown']
-)
-st.session_state.setdefault(
-    'generated', 
-    [{'type': 'normal', 'data': 'Line 1 \n Line 2 \n Line 3'},
-     {'type': 'normal', 'data': f'<audio controls src="{audio_path}"></audio>'}, 
-     {'type': 'normal', 'data': f'<img width="100%" height="200" src="{img_path}"/>'}, 
-     {'type': 'normal', 'data': f'{youtube_embed}'},
-     {'type': 'normal', 'data': f'{markdown}'},
-     {'type': 'table', 'data': f'{table_markdown}'}]
-)
-
-st.title("Chat placeholder")
-
-chat_placeholder = st.empty()
-
-with chat_placeholder.container():    
-    for i in range(len(st.session_state['generated'])):                
-        message(st.session_state['past'][i], is_user=True, key=f"{i}_user")
-        message(
-            st.session_state['generated'][i]['data'], 
-            key=f"{i}", 
-            allow_html=True,
-            is_table=True if st.session_state['generated'][i]['type']=='table' else False
+def _init_session_state():
+    """Initialize session state variables."""
+    st.session_state.setdefault("past", [])
+    st.session_state.setdefault("generated", [])
+    if "vector_store" not in st.session_state:
+        st.session_state["vector_store"] = get_vector_store(
+            embedding_model_name=EMBEDDING_MODEL
         )
-    
-    st.button("Clear message", on_click=on_btn_click)
 
-with st.container():
-    st.text_input("User Input:", on_change=on_input_change, key="user_input")
+
+def _on_input_change():
+    """Handle user input and generate a response."""
+    query = st.session_state.user_input
+    if not query:
+        return
+    response = generate_answer(
+        model=GEN_MODEL,
+        query=query,
+        k_values=K,
+        vector_store=st.session_state["vector_store"],
+        embedding_model_name=EMBEDDING_MODEL,
+        use_full_chapters=False,
+    )
+    st.session_state.past.append(query)
+    st.session_state.generated.append(response)
+    st.session_state.user_input = ""
+
+
+def _on_clear():
+    """Clear the chat history."""
+    st.session_state.past = []
+    st.session_state.generated = []
+
+
+def main():
+    st.title("Simple Chatbot")
+
+    _init_session_state()
+
+    chat_container = st.container()
+    with chat_container:
+        for i in range(len(st.session_state.generated)):
+            message(st.session_state.past[i], is_user=True, key=f"{i}_user")
+            message(st.session_state.generated[i], key=str(i))
+        st.button("Clear chat", on_click=_on_clear)
+
+    st.text_input("Your message:", key="user_input", on_change=_on_input_change)
+
+
+if __name__ == "__main__":
+    main()
