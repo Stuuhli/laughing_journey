@@ -93,6 +93,8 @@ def _prepare_prompt(
 
         context_string = "\n\n--- DOC SEP ---\n\n".join(context_parts)
 
+    context_string += "\n\n--- DOCS END ---\n\n"
+
     # Saubere Markdown-Quellenliste
     sources_text = "\n\n---\n**Quellen:**\n"
     for i, k in enumerate(unique_keys[:8], 1):

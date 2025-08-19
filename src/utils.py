@@ -31,6 +31,7 @@ Verweise in deiner Antwort **direkt im Fließtext** an den relevanten Stellen au
 Wenn die Information im Kontext fehlt, sage das explizit.
 
 Deine Antworten sollen im Markdown-Format sein.
+Wiederhole niemals denselben Satz oder dieselbe Quelle mehrfach. Nutze jede Quelle höchstens einmal.
 
 Kontext:
 {context}
