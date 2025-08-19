@@ -10,19 +10,13 @@ from utils import (
 from rich.console import Console
 import time
 from langchain_chroma import Chroma
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+from pathlib import Path
 
 console = Console()
 
 
 def _key(doc):
-    """Create a stable identifier for a document based on metadata.
-
-    Args:
-        doc: Document object returned from the vector store.
-
-    Returns:
-        tuple: Source file and chapter path.
-    """
     meta = doc.metadata
     return (
         meta.get("source_file", "Unknown file"),
@@ -37,7 +31,11 @@ def _prepare_prompt(
     embedding_model_name: str,
     use_full_chapters: bool,
 ):
-    """Retrieve context and construct prompt and source appendix."""
+    """
+    Wie bisher: Kontext aus der Vektordatenbank bauen.
+    ABER: wir geben jetzt den reinen context_string + sources_text zurück,
+    ohne schon PROMPT_TEMPLATE zu formatieren.
+    """
     results = do_a_sim_search(query, k=k_values, vector_store=vector_store)
 
     unique_keys = []
@@ -57,7 +55,11 @@ def _prepare_prompt(
     print("-" * 25)
 
     if use_full_chapters:
-        found_chapters = {doc.metadata.get("chapter_path") for doc in results if doc.metadata.get("chapter_path")}
+        found_chapters = {
+            doc.metadata.get("chapter_path")
+            for doc in results
+            if doc.metadata.get("chapter_path")
+        }
         all_chunks = load_chunks(chunk_dir=get_chunk_dir_for_model(embedding_model_name))
 
         grouped = {}
@@ -77,7 +79,6 @@ def _prepare_prompt(
                 context_parts.append(f"[{sid}] {combined}")
 
         context_string = "\n\n--- DOC SEP ---\n\n".join(context_parts)
-
     else:
         grouped = {}
         for doc in results:
@@ -92,14 +93,47 @@ def _prepare_prompt(
 
         context_string = "\n\n--- DOC SEP ---\n\n".join(context_parts)
 
-    prompt = PROMPT_TEMPLATE.format(context=context_string, query=query)
-
+    # Saubere Markdown-Quellenliste
     sources_text = "\n\n---\n**Quellen:**\n"
     for i, k in enumerate(unique_keys[:8], 1):
-        sid = source_id_map[k]
         source_file, chapter_path = k
         sources_text += f"{i}. `{source_file}` – Kapitel: *{chapter_path}*\n"
-    return prompt, sources_text
+
+    return context_string, sources_text
+
+
+def _format_history_for_query(
+    history: StreamlitChatMessageHistory,
+    current_query: str,
+    max_messages: int = 12,
+) -> str:
+    """
+    Verwendet die Chat-History als Kontext für die 'Frage:'-Sektion.
+    - Entfernt die letzte Human-Message, wenn sie == current_query ist,
+      damit sich der Prompt nicht verdoppelt.
+    - Begrenzung auf die letzten max_messages.
+    """
+    msgs = list(history.messages) if history and history.messages else []
+    if msgs and msgs[-1].type in ("human", "user") and msgs[-1].content.strip() == current_query.strip():
+        msgs = msgs[:-1]
+
+    # nur die letzten N Nachrichten
+    msgs = msgs[-max_messages:]
+
+    def _role(mtype: str) -> str:
+        return "HUMAN" if mtype in ("human", "user") else "AI"
+
+    lines = [f"{_role(m.type)}: {m.content}" for m in msgs]
+    if not lines:
+        return current_query  # keine History vorhanden
+
+    return (
+        "Nutze auch den bisherigen Verlauf.\n\n"
+        "Chat-Verlauf (älter → neuer):\n"
+        + "\n".join(lines)
+        + "\n\nAktuelle Nutzerfrage:\n"
+        + current_query
+    )
 
 
 def generate_answer(
@@ -110,10 +144,11 @@ def generate_answer(
     embedding_model_name: str,
     use_full_chapters: bool = True,
 ):
-    """Generate an answer using similarity search over the vector store."""
-
+    """
+    Non-Streaming-Variante: nutzt jetzt PROMPT_TEMPLATE konsistent.
+    """
     start = time.time()
-    prompt, sources_text = _prepare_prompt(
+    context_string, sources_text = _prepare_prompt(
         query,
         k_values,
         vector_store,
@@ -121,16 +156,17 @@ def generate_answer(
         use_full_chapters,
     )
 
+    final_prompt = PROMPT_TEMPLATE.format(context=context_string, query=query)
+
     llm = OllamaLLM(model=model, num_ctx=16384)
     with console.status(
         "[INFO] Request is being processed by the LLM ...",
         spinner="dots12",
         spinner_style="white",
     ):
-        raw_response = llm.invoke(prompt)
+        raw_response = llm.invoke(final_prompt)
 
     final_response_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
-
     final_response_text += sources_text
 
     print("Runtime: ", time.time() - start, " Sekunden")
@@ -141,14 +177,23 @@ def generate_answer_stream(
     model: str,
     query: str,
     k_values: int,
-    vector_store,
+    vector_store: Chroma,
     embedding_model_name: str,
+    history: StreamlitChatMessageHistory,
     use_full_chapters: bool = True,
+    log_prompts: bool = True,
+    log_dir: str = "prompt_logs",
+    max_history_messages: int = 12,
 ):
-    """Stream an answer token by token for st.write_stream."""
-
+    """
+    Streaming-Variante:
+    - Baut finalen Prompt *nur* via PROMPT_TEMPLATE (kein zusätzlicher Wrapper).
+    - In 'Frage:' steht: History (bereinigt) + aktuelle Frage.
+    """
     start = time.time()
-    prompt, sources_text = _prepare_prompt(
+
+    # (1) Kontext & Quellen aus Retrieval
+    context_string, sources_text = _prepare_prompt(
         query,
         k_values,
         vector_store,
@@ -156,15 +201,28 @@ def generate_answer_stream(
         use_full_chapters,
     )
 
-    llm = OllamaLLM(model=model, num_ctx=16384)
+    # (2) History in die Frage integrieren (ohne doppelte letzte Human-Message)
+    full_query = _format_history_for_query(history, query, max_messages=max_history_messages)
 
-    # Erst den Antworttext streamen
-    for chunk in llm.stream(prompt):
+    # (3) Finaler Prompt exakt nach utils.PROMPT_TEMPLATE
+    final_prompt = PROMPT_TEMPLATE.format(context=context_string, query=full_query)
+
+    # (4) Optional: Prompt-Logging
+    if log_prompts:
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        log_file = Path(log_dir) / f"prompt_{ts}.txt"
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(final_prompt)
+
+    # (5) Streamen
+    llm = OllamaLLM(model=model, num_ctx=16384)
+    for chunk in llm.stream(final_prompt):
         text = getattr(chunk, "content", None) or getattr(chunk, "text", str(chunk))
         if text:
             yield text
 
-    # Danach extra eine Section für die Quellen
+    # (6) Quellen am Ende
     yield f"{sources_text}"
 
     print("Runtime:", time.time() - start, "Sekunden")

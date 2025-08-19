@@ -3,11 +3,10 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 from answer_generation import generate_answer_stream
 from vector_db import get_vector_store
-from utils import stream_to_markdown
 
 K = 10
 EMBEDDING_MODEL = "granite-embedding:278m"
-GEN_MODEL = "gemma3n:e4b"
+GEN_MODEL = "gemma3n:e2b"
 
 # Chat Memory
 history = StreamlitChatMessageHistory(key="chat_memory")
@@ -64,9 +63,12 @@ def main():
                         k_values=K,
                         vector_store=st.session_state["vector_store"],
                         embedding_model_name=EMBEDDING_MODEL,
+                        history=history,
                         use_full_chapters=True,
+                        max_history_messages=10,  # z.B. nur letzte 10 Messages
                     )
                 )
+
                 status.update(label="Antwort fertig ✅", state="complete")
 
         # Antwort ins Memory speichern
