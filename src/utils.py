@@ -589,8 +589,14 @@ def get_chunk_dir_for_model(model_name: str):
     Returns:
         Path: Path to the model's chunk directory.
     """
-    safe_name = model_name.replace(":", "-").replace("/", "-")
-    return Path(__file__).parent.parent / "data" / "chunks" / f"chunks__{safe_name}"
+    model_size = EMBEDDING_MAX_LENGTHS.get(model_name)
+    if model_size:
+        return Path(__file__).parent.parent / "data" / "chunks" / f"chunks__{model_size}"
+    raise ValueError(f"Unknown model name: {model_name}")
+
+
+def get_chunk_dir_for_size(model_size: int):
+    return Path(__file__).parent.parent / "data" / "chunks" / f"chunks__{model_size}"
 
 
 def _reciprocal_rank(rank: int) -> float:

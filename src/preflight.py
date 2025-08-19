@@ -2,7 +2,7 @@ import os
 from docling_converter import convert_all_docx
 from chunking import create_chunks_for_all
 from vector_db import update_chroma_db
-from utils import CONVERTED_DIR, CHUNKS_DIR, CHROMA_DIR, get_models_from_user, EMBEDDING_MODELS, EMBEDDING_MAX_LENGTHS, get_chunk_dir_for_model
+from utils import CONVERTED_DIR, CHUNKS_DIR, CHROMA_DIR, get_models_from_user, EMBEDDING_MODELS, EMBEDDING_MAX_LENGTHS, get_chunk_dir_for_model, get_chunk_dir_for_size
 import shutil
 import stat
 
@@ -69,11 +69,11 @@ def check_and_manage_chunks():
 
     action = input("Aktion wählen: ").strip().lower()
     if action == 'a':
-        for emb in EMBEDDING_MODELS:
-            max_length = EMBEDDING_MAX_LENGTHS[emb]
-            chunk_dir = get_chunk_dir_for_model(emb)
-            print(f"[INFO] Erzeuge Chunks für {emb} (max_length={max_length}) im Ordner {chunk_dir}")
-            create_chunks_for_all(update=True, max_chunk_length=max_length, chunk_dir=chunk_dir)
+        result = sorted(set(EMBEDDING_MAX_LENGTHS.values()))
+        for size in result:
+            chunk_dir = get_chunk_dir_for_size(model_size=size)
+            print(f"[INFO] Erzeuge Chunks für Größe {size} im Ordner {chunk_dir}")
+            create_chunks_for_all(update=True, max_chunk_length=size, chunk_dir=chunk_dir)
 
     elif action == 'd':
         if not existing_chunk_dirs:
@@ -100,11 +100,10 @@ def check_and_manage_chunks():
         idx = int(input("> ")) - 1
         if 0 <= idx < len(existing_chunk_dirs):
             # Embedding-Name aus Ordner ableiten
-            emb = existing_chunk_dirs[idx].replace("chunks__", "").replace("-", "/")
-            max_length = EMBEDDING_MAX_LENGTHS.get(emb, 512)
-            chunk_dir = get_chunk_dir_for_model(emb)
-            print(f"[INFO] Erzeuge Chunks für {emb} (max_length={max_length}) im Ordner {chunk_dir}")
-            create_chunks_for_all(update=True, max_chunk_length=max_length, chunk_dir=chunk_dir)
+            selected_chunk_size = int(existing_chunk_dirs[idx].replace("chunks__", "").replace("-", "/"))
+            chunk_dir = get_chunk_dir_for_size(selected_chunk_size)
+            print(f"[INFO] Erzeuge Chunks für {selected_chunk_size} im Ordner {chunk_dir}")
+            create_chunks_for_all(update=True, max_chunk_length=selected_chunk_size, chunk_dir=chunk_dir)
         else:
             print("[WARN] Ungültige Auswahl.")
 
