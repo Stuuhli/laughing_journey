@@ -94,11 +94,11 @@ def _prepare_prompt(
 
     prompt = PROMPT_TEMPLATE.format(context=context_string, query=query)
 
-    sources_text = "\n\n---\nQuellen:\n"
-    for k in unique_keys[:8]:
+    sources_text = "\n\n---\n**Quellen:**\n"
+    for i, k in enumerate(unique_keys[:8], 1):
         sid = source_id_map[k]
         source_file, chapter_path = k
-        sources_text += f"[{sid}] {source_file} – Kapitel: {chapter_path}\n"
+        sources_text += f"{i}. `{source_file}` – Kapitel: *{chapter_path}*\n"
     return prompt, sources_text
 
 
@@ -141,11 +141,11 @@ def generate_answer_stream(
     model: str,
     query: str,
     k_values: int,
-    vector_store: Chroma,
+    vector_store,
     embedding_model_name: str,
     use_full_chapters: bool = True,
 ):
-    """Stream an answer token by token."""
+    """Stream an answer token by token for st.write_stream."""
 
     start = time.time()
     prompt, sources_text = _prepare_prompt(
@@ -157,16 +157,17 @@ def generate_answer_stream(
     )
 
     llm = OllamaLLM(model=model, num_ctx=16384)
-    with console.status(
-        "[INFO] Request is being processed by the LLM ...",
-        spinner="dots12",
-        spinner_style="white",
-    ):
-        for chunk in llm.stream(prompt):
-            yield chunk.content if hasattr(chunk, "content") else str(chunk)
 
-    yield sources_text
-    print("Runtime: ", time.time() - start, " Sekunden")
+    # Erst den Antworttext streamen
+    for chunk in llm.stream(prompt):
+        text = getattr(chunk, "content", None) or getattr(chunk, "text", str(chunk))
+        if text:
+            yield text
+
+    # Danach extra eine Section für die Quellen
+    yield f"{sources_text}"
+
+    print("Runtime:", time.time() - start, "Sekunden")
 
 
 def generate_answer_compare_docs(
