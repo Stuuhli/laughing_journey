@@ -3,6 +3,7 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 from answer_generation import generate_answer_stream
 from vector_db import get_vector_store
+from utils import stream_to_markdown
 
 K = 10
 EMBEDDING_MODEL = "granite-embedding:278m"
