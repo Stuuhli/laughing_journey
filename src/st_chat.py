@@ -3,10 +3,11 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 
 from answer_generation import generate_answer_stream
 from vector_db import get_vector_store
+from preflight import run_full_pipeline_for_new_doc
 
 K = 10
-EMBEDDING_MODEL = "granite-embedding:278m"
-GEN_MODEL = "gemma3n:e2b"
+EMBEDDING_MODEL_CHAT = "granite-embedding:278m"
+GEN_MODEL_CHAT = "gemma3n:e2b"
 
 # Chat Memory
 history = StreamlitChatMessageHistory(key="chat_memory")
@@ -16,13 +17,24 @@ def _init_session_state():
     """Initialize session state variables."""
     if "vector_store" not in st.session_state:
         st.session_state["vector_store"] = get_vector_store(
-            embedding_model_name=EMBEDDING_MODEL
+            embedding_model_name=EMBEDDING_MODEL_CHAT
         )
 
 
 def _on_clear():
     """Clear the chat history."""
     history.clear()
+
+
+def _on_submit(uploaded_files):
+    if uploaded_files:
+        for file in uploaded_files:
+            # Check for file type and choose corresponding action
+            if file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                # Process Word document(s)
+                run_full_pipeline_for_new_doc(file, temporary=True)
+            else:
+                st.warning(f"Unsupported file type: {file.type}")
 
 
 def main():
@@ -47,7 +59,7 @@ def main():
             st.markdown(msg.content)
 
     # --- Eingabe ---
-    if prompt := st.chat_input("Your message:"):
+    if prompt := st.chat_input(placeholder="Your message: ", accept_file="multiple", file_type="docx", on_submit=_on_submit(uploaded_files=st.session_state["uploaded_files"])):
         # User speichern + anzeigen
         history.add_user_message(prompt)
         with st.chat_message("user"):
@@ -58,11 +70,11 @@ def main():
             with st.status("Generiere Antwort...", expanded=True) as status:
                 response = st.write_stream(
                     generate_answer_stream(
-                        model=GEN_MODEL,
+                        model=GEN_MODEL_CHAT,
                         query=prompt,
                         k_values=K,
                         vector_store=st.session_state["vector_store"],
-                        embedding_model_name=EMBEDDING_MODEL,
+                        embedding_model_name=EMBEDDING_MODEL_CHAT,
                         history=history,
                         use_full_chapters=True,
                         max_history_messages=10,  # z.B. nur letzte 10 Messages

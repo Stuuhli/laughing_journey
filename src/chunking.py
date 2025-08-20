@@ -58,7 +58,7 @@ def get_chunk_id(text: str, meta: dict) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def create_chunks_for_all(update=False, doc_path=None, max_chunk_length=1024, chunk_dir=None):
+def create_chunks_for_all(update: bool = False, doc_path: Path = None, max_chunk_length: int = 1024, chunk_dir: Path = None, temporary: bool = False) -> None:
     """Create JSON chunk files for converted documents.
 
     Args:

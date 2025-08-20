@@ -47,7 +47,7 @@ def add_documents(documents, ids, vector_store):
     print(f"[SUCCESS] Added {len(documents)} new documents")
 
 
-def update_chroma_db(embedding_model_name: str, update=False, filename=None, doc_path=None):
+def update_chroma_db(embedding_model_name: str, update: bool = False, filename: str = None, doc_path: Path = None):
     """Update the Chroma database with chunks from JSON files.
 
     Args:

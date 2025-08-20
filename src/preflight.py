@@ -3,6 +3,7 @@ from docling_converter import convert_all_docx
 from chunking import create_chunks_for_all
 from vector_db import update_chroma_db
 from utils import CONVERTED_DIR, CHUNKS_DIR, CHROMA_DIR, get_models_from_user, EMBEDDING_MODELS, EMBEDDING_MAX_LENGTHS, get_chunk_dir_for_model, get_chunk_dir_for_size
+from st_chat import EMBEDDING_MODEL_CHAT
 import shutil
 import stat
 
@@ -174,18 +175,19 @@ def preflight():
     print("--- [PRE] Preflight finished. ---")
 
 
-def run_full_pipeline_for_new_doc(doc_path):
+def run_full_pipeline_for_new_doc(doc_path, temporary: bool = False):
     """Convert, chunk and index a new document.
 
     Args:
         doc_path: Path to the document that should be processed.
     """
     clean_path = str(doc_path).strip().strip('"')
-    print(f"\n--- [PIPELINE] Starting full pipeline for: {clean_path} ---")
+    if not temporary:
+        print(f"\n--- [PIPELINE] Starting full pipeline for: {clean_path} ---")
     convert_all_docx(doc_path=clean_path)
     txt_filename = os.path.splitext(os.path.basename(clean_path))[0] + ".txt"
     txt_path = str(CONVERTED_DIR / txt_filename)
-    embedding_model_name = get_models_from_user(available_models=EMBEDDING_MODELS, test_mode=False)[0]
+    embedding_model_name = EMBEDDING_MODEL_CHAT if temporary else get_models_from_user(available_models=EMBEDDING_MODELS, test_mode=False)[0]  # tenary operator
     max_length = EMBEDDING_MAX_LENGTHS[embedding_model_name]
     chunk_dir = get_chunk_dir_for_model(embedding_model_name)
     create_chunks_for_all(doc_path=txt_path, update=True, max_chunk_length=max_length, chunk_dir=chunk_dir)
